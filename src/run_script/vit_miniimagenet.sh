@@ -18,4 +18,4 @@ python ../train.py \
 --use_join_loss true \
 --cuda 0 \
 --use_aux_loss true \
---comment "加上全局分类头"
+--comment "初次运行"
