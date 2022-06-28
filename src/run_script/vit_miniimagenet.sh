@@ -16,6 +16,6 @@ python ../train.py \
 --learning_rate 0.001 \
 --balance_scale 1 \
 --use_join_loss true \
---cuda 3 \
+--cuda 0 \
 --use_aux_loss true \
 --comment "加上全局分类头"

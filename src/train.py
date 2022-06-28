@@ -13,9 +13,8 @@ from tqdm import tqdm
 import numpy as np
 import torch
 from src.utils.logger_utils import logger
-from src.models.vit import ViT
-from src.models.vit_for_small_dataset import ViT_small
-from src.models.swin_transformer import SwinTransformer
+
+from src.models.label_propagation import ViT
 from data_loaders.data_fetchers import DataFetcher
 from src.data_loaders.prototypical_batch_sampler import PrototypicalBatchSampler
 from torch.utils.tensorboard import SummaryWriter
@@ -85,42 +84,20 @@ def init_model(opt):
     '''
     Initialize the ProtoNet
     '''
-    if opt.model_name == 'cnn':
-        return ProtoNet(x_dim=opt.channel).cuda()
-    elif opt.model_name == 'vit':
-        return ViT(
-            image_size=96,
-            patch_size=8,
-            out_dim=64,
-            embed_dim=64,
-            depth=4,
-            heads=8,
-            dim_head=8,
-            mlp_dim=64,
-            tsfm_dropout=0.1,
-            emb_dropout=0.1,
-            use_avg_pool_out=True,
-            channels=3
-        ).cuda()
-    elif opt.model_name == 'vit_small':
-        return ViT_small(
-            image_size=128,
-            patch_size=32,
-            out_dim=1600,
-            dim=256,
-            depth=4,
-            heads=8,
-            dim_head=64,
-            mlp_dim=512,
-            dropout=0.1,
-            emb_dropout=0.1,
-            channels=3
-        ).cuda()
-    elif opt.model_name == 'swin_transformer':
-        return SwinTransformer(img_size=opt.height, window_size=4, drop_rate=0.1, attn_drop_rate=0.1, only_feature=True).cuda()
-
-    raise ValueError('Unsupported model_name {}'.format(opt.model_name))
-
+    return ViT(
+        image_size=96,
+        patch_size=8,
+        out_dim=64,
+        embed_dim=64,
+        depth=4,
+        heads=8,
+        dim_head=8,
+        mlp_dim=64,
+        tsfm_dropout=0.1,
+        emb_dropout=0.1,
+        use_avg_pool_out=True,
+        channels=3
+    ).cuda()
 
 def init_optim(opt, model, mlp=None):
     '''
