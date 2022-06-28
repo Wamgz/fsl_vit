@@ -255,7 +255,9 @@ class ViT(nn.Module):
         query_idxs = torch.stack(list(map(lambda c: labels.eq(c).nonzero()[self.num_support:], labels_unique))).view(-1)  # (class_per_episode * num_query)
         support_loss, query_loss = \
             loss_log[support_idxs].view(self.n_classes, self.num_support, -1), loss_log[query_idxs].view(self.n_classes, self.num_query, -1)
-        target_idx = torch.arange(self.n_classes).view(self.n_classes, 1, 1).cuda()
+        target_idx = torch.arange(self.n_classes).view(self.n_classes, 1, 1)
+        if torch.cuda.is_available():
+            target_idx = target_idx.cuda()
         support_target_idx, query_target_idx = \
             target_idx.expand(self.n_classes, self.num_support, 1).long(), target_idx.expand(self.n_classes, self.num_query, 1).long()
         support_loss_val, query_loss_val = \

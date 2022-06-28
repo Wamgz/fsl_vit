@@ -190,8 +190,6 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
                 x, y = batch  # x: (batch, C, H, W), y:(batch, )
                 x, y = x.cuda(), y.cuda()
                 loss, acc = model(x, y)
-                loss.backward()
-                optim.step()
                 val_loss.append(loss.detach())
                 val_acc.append(acc.detach())
             val_avg_loss = torch.tensor(val_loss[-opt.iterations:]).mean()
