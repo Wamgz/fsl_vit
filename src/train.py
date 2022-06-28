@@ -169,7 +169,7 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
             optim.zero_grad()
             x, y = batch  # x: (batch, C, H, W), y:(batch, )
             x, y = x.cuda(), y.cuda()
-            loss, acc = model(x)
+            loss, acc = model(x, y)
             loss.backward()
             optim.step()
             train_loss.append(loss.detach())
@@ -189,7 +189,7 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
             for batch in val_iter:
                 x, y = batch  # x: (batch, C, H, W), y:(batch, )
                 x, y = x.cuda(), y.cuda()
-                loss, acc = model(x)
+                loss, acc = model(x, y)
                 loss.backward()
                 optim.step()
                 val_loss.append(loss.detach())
