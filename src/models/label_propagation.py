@@ -258,8 +258,7 @@ class ViT(nn.Module):
         x_class_embed = x[:, :, -self.class_embed_dim:].unsqueeze(2).repeat(1, 1, labels_unique.size(0), 1) # (batch, num_patch, class_per_epi, class_embed_dim)
         target_class_embed = self.cls_token[labels_unique].unsqueeze(0).unsqueeze(0).repeat(batch, num_patch, 1, 1) # (batch, num_patch, class_per_epi, class_embed_dim)
         dist = torch.pow(x_class_embed - target_class_embed, 2).sum(-1) # (batch, num_patch, class_per_epi)
-        dist_mean = torch.mean(dist, dim=1)
-        loss_log = F.log_softmax(dist_mean, dim=-1) # (batch, class_per_epi)
+        loss_log = F.log_softmax(self.avg_pool(dist.transpose(1, 2)).transpose(1, 2).squeeze(1), dim=-1) # (batch, class_per_epi)
 
         support_loss, query_loss = \
             loss_log[:self.num_support * self.cls_per_episode, :].view(self.cls_per_episode, self.num_support, -1), loss_log[self.num_support * self.cls_per_episode:, :].view(self.cls_per_episode, self.num_query, -1)

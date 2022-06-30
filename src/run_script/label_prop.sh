@@ -1,7 +1,7 @@
+# coding=UTF-8
 python ../train.py \
 --dataset_root ~/WZ/data \
---epochs 3000 \
---model_name cnn \
+--epochs 1000 \
 --dataset_name miniImagenet \
 --classes_per_it_tr 5 \
 --num_support_tr 5 \
@@ -9,8 +9,12 @@ python ../train.py \
 --classes_per_it_val 5 \
 --num_support_val 5 \
 --num_query_val 15 \
---height 84 \
---width 84 \
---iterations 100 \
+--height 96 \
+--width 96 \
+--iterations 1000 \
 --learning_rate 0.001 \
---cuda 3
+--balance_scale 1 \
+--use_join_loss true \
+--cuda 2 \
+--use_aux_loss true \
+--comment "query单独一个embedding"

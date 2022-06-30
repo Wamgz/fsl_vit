@@ -200,8 +200,6 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
             postfix = ' (Best)' if val_avg_acc >= best_acc else ' (Best: {})'.format(
                 best_acc)
 
-            logger.info('Avg Val Loss: {}, Avg Val Acc: {}{}'.format(
-                val_avg_loss, val_avg_acc, postfix))
             if val_avg_acc >= best_acc:
                 torch.save(model.state_dict(), best_model_path)
                 best_acc = val_avg_acc
