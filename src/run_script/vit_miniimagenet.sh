@@ -16,6 +16,6 @@ python ../train.py \
 --learning_rate 0.001 \
 --balance_scale 1 \
 --use_join_loss true \
---cuda 0 \
+--cuda 2 \
 --use_aux_loss true \
---comment "初次运行"
+--comment "query单独一个embedding"
