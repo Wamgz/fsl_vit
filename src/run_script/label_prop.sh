@@ -17,4 +17,4 @@ python ../train.py \
 --use_join_loss true \
 --cuda 2 \
 --use_aux_loss true \
---comment "query单独一个embedding"
+--comment "自适应池化替代mean"
