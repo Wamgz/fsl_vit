@@ -5,7 +5,6 @@ cur_path=os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, cur_path+"/..")
 from prototypical_loss import prototypical_loss as loss_fn
 from datasets.omniglot_dataset import OmniglotDataset
-from src.models.protonet import ProtoNet
 from src.utils.parser_util import get_parser
 from datasets.miniimagenet import MiniImageNet
 from datasets.stanfordCars import StanfordCars
