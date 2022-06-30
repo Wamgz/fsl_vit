@@ -13,7 +13,6 @@ import torch.nn.functional as F
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
 
-
 # classes
 
 class PreNorm(nn.Module):
@@ -25,7 +24,6 @@ class PreNorm(nn.Module):
     def forward(self, x, **kwargs):
         x = rearrange(x, 'b n e -> b e n')
         return self.fn(rearrange(self.norm(x), 'b e n -> b n e'), **kwargs)
-
 
 class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim, dropout=0.):
@@ -156,7 +154,7 @@ class Mlp(nn.Module):
         return x
 
 class ViT(nn.Module):
-    def __init__(self, *, image_size, patch_size, out_dim, embed_dim, depth, heads, mlp_dim, class_embed_dim=64, total_class=100, n_classes=5,
+    def __init__(self, *, image_size, patch_size, out_dim, embed_dim, depth, heads, mlp_dim, class_embed_dim=64, total_class=100, cls_per_episode=5,
                  support_num=5, query_num=15, pool='cls', channels=1, dim_head=12, tsfm_dropout=0., emb_dropout=0., feature_only=False, pretrained=False, patch_norm=True, conv_patch_embedding=False,
                  use_avg_pool_out=False, use_dual_feature=False):
         super().__init__()
@@ -165,7 +163,7 @@ class ViT(nn.Module):
         image_height, image_width = pair(image_size) #
         patch_height, patch_width = pair(patch_size) # 32, 32
         self.num_support, self.num_query = support_num, query_num
-        self.n_classes = n_classes
+        self.cls_per_episode = cls_per_episode
         assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
 
         self.num_patch = (image_height // patch_height) * (image_width // patch_width) # 64
@@ -188,7 +186,10 @@ class ViT(nn.Module):
 
         self.pos_embedding = nn.Parameter(torch.randn(1, self.num_patch, embed_dim))
         self.class_embed_dim = class_embed_dim
-        self.cls_token = nn.Parameter(torch.randn(total_class, self.class_embed_dim)) # patch维度的class_embed
+        self.cls_token = nn.Parameter(torch.zeros(total_class + 1, self.class_embed_dim)) # patch维度的class_embed
+        trunc_normal_(self.pos_embedding, std=.02)
+        trunc_normal_(self.cls_token, std=.02)
+
         self.dropout = nn.Dropout(emb_dropout)
         # dim: 1024, depth: 6, heads: 16, dim_head: 64, mlp_dim: 2048, dropout: 0.1
         self.transformer = Transformer(embed_dim, class_embed_dim, depth, heads, dim_head, mlp_dim, self.num_patch, tsfm_dropout)
@@ -217,49 +218,57 @@ class ViT(nn.Module):
         self.use_dual_feature = use_dual_feature
         self.avg_pool_64 = nn.AdaptiveAvgPool1d(64)
     def forward(self, imgs, labels):
-        ## model输出
-        # imgs: (batch, C, H, W) -> (25, 3, 96, 96)
-        # labels: (batch, )
-        # imgs = torch.cat((support_imgs, query_imgs), dim=0) # (batch, C, H, W)
-        # labels = torch.cat((support_labels, query_labels), dim=0) # (batch, )
+        '''
+        :param imgs: (batch, C, H, W) -> (100, 3, 96, 96)
+        :param labels: (batch, ) -> (100, )
+        :return:
+        '''
+        ## patch embedding
         x = self.to_patch_embedding(imgs) # (batch, num_patch, patch_size * patch_size) -> (100, 12 * 12, 64)
         if self.use_dual_feature:
             x_1 = self.to_patch_embedding(F.interpolate(imgs, [64, 64]))
             x_2 = self.to_patch_embedding(F.interpolate(imgs, [32, 32]))
             x = torch.cat((x, x_1, x_2), dim=1) # num_patch维度拼接
             x = self.avg_pool_64(x.transpose(1, 2)).transpose(1, 2)
+
         b, n, _ = x.shape
         x += self.pos_embedding[:, :n] # (batch, num_patch, embed_dim)
-        cls_tokens = self.cls_token[labels].unsqueeze(1).repeat(1, self.num_patch, 1) # (batch, num_patch, class_embed_dim)
-        x = torch.cat((cls_tokens, x), dim=-1) # patch维度拼接, (batch, num_patch, embed_dim + embed_dim)
+
+        ## label映射到[0, class_per_episode)维度
+        labels_unique, _ = torch.sort(torch.unique(labels))
+
+        ## 拆分support和query，加上对应的class_embedding，并把数据打乱
+        support_idxs, query_idxs = self._support_query_data(labels)  # (class_per_episode * num_support)
+        support_cls_tokens, query_cls_tokens = \
+            self.cls_token[labels[support_idxs]].unsqueeze(1).repeat(1, self.num_patch, 1), self.cls_token[-1, :].view(1, 1, -1).repeat(self.num_query * self.cls_per_episode, self.num_patch, 1) # (num_support, num_patch, class_embed_dim)
+        support_x, query_x = torch.cat((support_cls_tokens, x[support_idxs]), dim=-1), torch.cat((query_cls_tokens, x[query_idxs]), dim=-1) # patch维度拼接, (num_support, num_patch, embed_dim + embed_dim), (num_query, num_patch, embed_dim + embed_dim)
+        x, labels = torch.cat((support_x, query_x), dim=0), torch.cat((labels[support_idxs], labels[query_idxs]))
+        rand_idxs = torch.randperm(labels.size(0))
+        x, labels = x[rand_idxs], labels[rand_idxs]
+
+        ## transformer
         x = self.dropout(x)
         x = self.transformer(x) # (batch, num_patch, embedding_dim + class_embed_dim)
 
-        # 标签映射到[0, 5)区间
-        # self.cls_token: (total_classes, class_embed_dim)
-        labels_unique, _ = torch.sort(torch.unique(labels))
-        labels_index = torch.zeros(self.total_class)
-        for idx, label in enumerate(labels_unique):
-            labels_index[label] = idx
-
-        ## 取出class_embed进行loss计算(support和query）都计算
+        ## 取出class_embed进行loss计算，(support和query）都计算
         batch, num_patch = x.size(0), x.size(1)
-        x_class_embed = x[:, :, -self.class_embed_dim:] # (batch, num_patch, class_embed_dim)
-        target_class_embed = self.cls_token[labels_unique] # (class_per_epi, class_embed_dim)
-        x_class_embed = x_class_embed.unsqueeze(2).repeat(1, 1, labels_unique.size(0), 1) # (batch, num_patch, class_per_epi, class_embed_dim)
-        target_class_embed = target_class_embed.unsqueeze(0).unsqueeze(0).repeat(batch, num_patch, 1, 1) # (batch, num_patch, class_per_epi, class_embed_dim)
+        ## 重新按照support，query的顺序排列数据，方便计算每个sample到对应class_embedding的距离
+        support_idxs, query_idxs = self._support_query_data(labels)  # (class_per_episode * num_support)
+        x, labels = torch.cat((x[support_idxs], x[query_idxs]), dim=0), torch.cat((labels[support_idxs], labels[query_idxs]))
+        x_class_embed = x[:, :, -self.class_embed_dim:].unsqueeze(2).repeat(1, 1, labels_unique.size(0), 1) # (batch, num_patch, class_per_epi, class_embed_dim)
+        target_class_embed = self.cls_token[labels_unique].unsqueeze(0).unsqueeze(0).repeat(batch, num_patch, 1, 1) # (batch, num_patch, class_per_epi, class_embed_dim)
         dist = torch.pow(x_class_embed - target_class_embed, 2).sum(-1) # (batch, num_patch, class_per_epi)
-        loss_log = F.log_softmax(self.avg_pool(dist.transpose(1, 2)).transpose(1, 2).squeeze(1), dim=-1) # (batch, class_per_epi)
+        dist_mean = torch.mean(dist, dim=1)
+        loss_log = F.log_softmax(dist_mean, dim=-1) # (batch, class_per_epi)
 
-        support_idxs = torch.stack(list(map(lambda c: labels.eq(c).nonzero()[:self.num_support], labels_unique))).view(-1)  # (class_per_episode * num_support)
-        query_idxs = torch.stack(list(map(lambda c: labels.eq(c).nonzero()[self.num_support:], labels_unique))).view(-1)  # (class_per_episode * num_query)
         support_loss, query_loss = \
-            loss_log[support_idxs].view(self.n_classes, self.num_support, -1), loss_log[query_idxs].view(self.n_classes, self.num_query, -1)
-        target_idx = torch.arange(self.n_classes).view(self.n_classes, 1, 1)
+            loss_log[:self.num_support * self.cls_per_episode, :].view(self.cls_per_episode, self.num_support, -1), loss_log[self.num_support * self.cls_per_episode:, :].view(self.cls_per_episode, self.num_query, -1)
+
+        target_idx = torch.arange(self.cls_per_episode).view(self.cls_per_episode, 1, 1)
         if torch.cuda.is_available():
             target_idx = target_idx.cuda()
         support_target_idx, query_target_idx = \
-            target_idx.expand(self.n_classes, self.num_support, 1).long(), target_idx.expand(self.n_classes, self.num_query, 1).long()
+            target_idx.expand(self.cls_per_episode, self.num_support, 1).long(), target_idx.expand(self.cls_per_episode, self.num_query, 1).long()
         support_loss_val, query_loss_val = \
             -support_loss.gather(2, support_target_idx).squeeze().view(-1).mean(), -query_loss.gather(2, query_target_idx).squeeze().view(-1).mean()
         loss_val = support_loss_val + query_loss_val
@@ -268,6 +277,21 @@ class ViT(nn.Module):
         acc_val = y_hat.eq(query_target_idx.squeeze(2)).float().mean()
 
         return loss_val, acc_val
+
+    def _map2ZeroStart(self, labels):
+        labels_unique, _ = torch.sort(torch.unique(labels))
+        labels_index = torch.zeros(self.total_class)
+        for idx, label in enumerate(labels_unique):
+            labels_index[label] = idx
+        for i in range(labels.size(0)):
+            labels[i] = labels_index[labels[i]]
+        return labels
+
+    def _support_query_data(self, labels):
+        labels_unique, _ = torch.sort(torch.unique(labels))
+        support_idxs = torch.stack(list(map(lambda c: labels.eq(c).nonzero()[:self.num_support], labels_unique))).view(-1)  # (class_per_episode * num_support)
+        query_idxs = torch.stack(list(map(lambda c: labels.eq(c).nonzero()[self.num_support:], labels_unique))).view(-1)  # (class_per_episode * num_query)
+        return support_idxs, query_idxs
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -311,8 +335,8 @@ if __name__ == '__main__':
     support = torch.randn((25, 3, 96, 96))
     query = torch.randn((75, 3, 96, 96))
     imgs = torch.cat((support, query), 0)
-    support_labels = torch.arange(5).view(1, -1).repeat(5, 1).view(-1)
-    query_labels = torch.arange(5).view(1, -1).repeat(15, 1).view(-1)
+    support_labels = torch.arange(5).view(1, -1).repeat(5, 1).view(-1) + 2
+    query_labels = torch.arange(5).view(1, -1).repeat(15, 1).view(-1) + 2
     labels = torch.cat((support_labels, query_labels), 0)
     out = model(imgs, labels)
 
