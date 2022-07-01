@@ -234,9 +234,7 @@ class ViT(nn.Module):
         b, n, _ = x.shape
         x += self.pos_embedding[:, :n] # (batch, num_patch, embed_dim)
 
-        ## label映射到[0, class_per_episode)维度
         labels_unique, _ = torch.sort(torch.unique(labels))
-
         ## 拆分support和query，加上对应的class_embedding，并把数据打乱
         support_idxs, query_idxs = self._support_query_data(labels)  # (class_per_episode * num_support)
         support_cls_tokens, query_cls_tokens = \
@@ -253,7 +251,15 @@ class ViT(nn.Module):
         ## 取出class_embed进行loss计算，(support和query）都计算
         batch, num_patch = x.size(0), x.size(1)
         ## 重新按照support，query的顺序排列数据，方便计算每个sample到对应class_embedding的距离
-        support_idxs, query_idxs = self._support_query_data(labels)  # (class_per_episode * num_support)
+        batch_idxs = torch.cat((support_idxs, query_idxs))[rand_idxs] ## 按照打乱img和label的顺序打乱idx
+        support_idxs, query_idxs = \
+            (batch_idxs < self.num_support * self.cls_per_episode).nonzero().as_tuple(True)[0], (batch_idxs >= self.num_support * self.cls_per_episode).nonzero().as_tuple(True)[0] # (class_per_episode * num_support)
+        support_labels, query_labels = labels[support_idxs], labels[query_idxs]
+
+        ## 按照标签的顺序，重新排列support和query的数据
+        support_idxs, query_idxs = torch.stack(list(map(lambda c: support_labels.eq(c).nonzero()[:], labels_unique))).view(-1), \
+                                       torch.stack(list(map(lambda c: query_labels.eq(c).nonzero()[:], labels_unique))).view(-1)
+
         x, labels = torch.cat((x[support_idxs], x[query_idxs]), dim=0), torch.cat((labels[support_idxs], labels[query_idxs]))
         x_class_embed = x[:, :, -self.class_embed_dim:].unsqueeze(2).repeat(1, 1, labels_unique.size(0), 1) # (batch, num_patch, class_per_epi, class_embed_dim)
         target_class_embed = self.cls_token[labels_unique].unsqueeze(0).unsqueeze(0).repeat(batch, num_patch, 1, 1) # (batch, num_patch, class_per_epi, class_embed_dim)
@@ -261,7 +267,8 @@ class ViT(nn.Module):
         loss_log = F.log_softmax(self.avg_pool(dist.transpose(1, 2)).transpose(1, 2).squeeze(1), dim=-1) # (batch, class_per_epi)
 
         support_loss, query_loss = \
-            loss_log[:self.num_support * self.cls_per_episode, :].view(self.cls_per_episode, self.num_support, -1), loss_log[self.num_support * self.cls_per_episode:, :].view(self.cls_per_episode, self.num_query, -1)
+            loss_log[:self.num_support * self.cls_per_episode, :].view(self.cls_per_episode, self.num_support, -1),\
+            loss_log[self.num_support * self.cls_per_episode:, :].view(self.cls_per_episode, self.num_query, -1)
 
         target_idx = torch.arange(self.cls_per_episode).view(self.cls_per_episode, 1, 1)
         if torch.cuda.is_available():
@@ -277,14 +284,6 @@ class ViT(nn.Module):
 
         return loss_val, acc_val
 
-    def _map2ZeroStart(self, labels):
-        labels_unique, _ = torch.sort(torch.unique(labels))
-        labels_index = torch.zeros(self.total_class)
-        for idx, label in enumerate(labels_unique):
-            labels_index[label] = idx
-        for i in range(labels.size(0)):
-            labels[i] = labels_index[labels[i]]
-        return labels
 
     def _support_query_data(self, labels):
         labels_unique, _ = torch.sort(torch.unique(labels))
