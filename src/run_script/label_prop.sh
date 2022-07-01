@@ -15,6 +15,6 @@ python ../train.py \
 --learning_rate 0.001 \
 --balance_scale 1 \
 --use_join_loss true \
---cuda 2 \
+--cuda 3 \
 --use_aux_loss true \
---comment "自适应池化替代mean"
+--comment "loss修正"
