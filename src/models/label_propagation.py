@@ -253,7 +253,7 @@ class ViT(nn.Module):
         ## 重新按照support，query的顺序排列数据，方便计算每个sample到对应class_embedding的距离
         batch_idxs = torch.cat((support_idxs, query_idxs))[rand_idxs] ## 按照打乱img和label的顺序打乱idx
         support_idxs, query_idxs = \
-            (batch_idxs < self.num_support * self.cls_per_episode).nonzero().as_tuple(True)[0], (batch_idxs >= self.num_support * self.cls_per_episode).nonzero().as_tuple(True)[0] # (class_per_episode * num_support)
+            (batch_idxs < self.num_support * self.cls_per_episode).nonzero(as_tuple=True)[0], (batch_idxs >= self.num_support * self.cls_per_episode).nonzero(as_tuple=True)[0] # (class_per_episode * num_support)
         support_labels, query_labels = labels[support_idxs], labels[query_idxs]
 
         ## 按照标签的顺序，重新排列support和query的数据
