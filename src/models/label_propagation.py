@@ -259,7 +259,7 @@ class ViT(nn.Module):
         ## 按照标签的顺序，重新排列support和query的数据
         support_idxs, query_idxs = torch.stack(list(map(lambda c: support_labels.eq(c).nonzero()[:], labels_unique))).view(-1), \
                                        torch.stack(list(map(lambda c: query_labels.eq(c).nonzero()[:], labels_unique))).view(-1)
-
+        support_labels, query_labels = support_labels[support_idxs], query_labels[query_idxs]
         x, labels = torch.cat((x[support_idxs], x[query_idxs]), dim=0), torch.cat((labels[support_idxs], labels[query_idxs]))
         x_class_embed = x[:, :, -self.class_embed_dim:].unsqueeze(2).repeat(1, 1, labels_unique.size(0), 1) # (batch, num_patch, class_per_epi, class_embed_dim)
         target_class_embed = self.cls_token[labels_unique].unsqueeze(0).unsqueeze(0).repeat(batch, num_patch, 1, 1) # (batch, num_patch, class_per_epi, class_embed_dim)
