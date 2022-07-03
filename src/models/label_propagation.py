@@ -241,18 +241,13 @@ class ViT(nn.Module):
 
         labels = self._map2ZeroStart(labels)
         labels_unique, _ = torch.sort(torch.unique(labels))
-        logger.info('=== labels: {}, labels_unique : {} === '.format(labels, labels_unique))
 
-        ## 拆分support和query，加上对应的class_embedding，并把数据打乱
+        ## 拆分support和query，加上对应的class_embedding
         support_idxs, query_idxs = self._support_query_data(labels)  # (class_per_episode * num_support)
-        ## TODO class_token相对于episode
         support_cls_tokens, query_cls_tokens = \
             self.cls_token[labels[support_idxs]].unsqueeze(1).repeat(1, self.num_patch, 1), self.cls_token[-1, :].view(1, 1, -1).repeat(self.num_query * self.cls_per_episode, self.num_patch, 1) # (num_support, num_patch, class_embed_dim)
         support_x, query_x = torch.cat((support_cls_tokens, x[support_idxs]), dim=-1), torch.cat((query_cls_tokens, x[query_idxs]), dim=-1) # patch维度拼接, (num_support, num_patch, embed_dim + embed_dim), (num_query, num_patch, embed_dim + embed_dim)
         x, labels = torch.cat((support_x, query_x), dim=0), torch.cat((labels[support_idxs], labels[query_idxs]))
-        rand_idxs = torch.randperm(labels.size(0))
-        x, labels = x[rand_idxs], labels[rand_idxs]
-        logger.info('=== x: {}, labels : {} === '.format(x.shape, labels))
 
         ## transformer
         x = self.dropout(x)
@@ -260,21 +255,7 @@ class ViT(nn.Module):
 
         ## 取出class_embed进行loss计算，(support和query）都计算
         batch, num_patch = x.size(0), x.size(1)
-        ## 重新按照support，query的顺序排列数据，方便计算每个sample到对应class_embedding的距离
-        batch_idxs = torch.cat((support_idxs, query_idxs))[rand_idxs] ## 按照打乱img和label的顺序打乱idx
-        support_idxs, query_idxs = \
-            (batch_idxs < self.num_support * self.cls_per_episode).nonzero(as_tuple=True)[0], (batch_idxs >= self.num_support * self.cls_per_episode).nonzero(as_tuple=True)[0] # (class_per_episode * num_support)
-        logger.info('=== support_idxs: {}, query_idxs : {} === '.format(support_idxs, query_idxs))
-        support_labels, query_labels = labels[support_idxs], labels[query_idxs]
-        logger.info('=== support_labels: {}, query_labels : {} === '.format(support_labels, query_labels))
-        support_x, query_x = x[support_idxs], x[query_idxs]
-        logger.info('=== support_x: {}, query_x : {} === '.format(support_x.shape, query_x.shape))
 
-        ## 按照标签的顺序，重新排列support和query的数据
-        support_idxs, query_idxs = torch.stack(list(map(lambda c: support_labels.eq(c).nonzero()[:], labels_unique))).view(-1), \
-                                       torch.stack(list(map(lambda c: query_labels.eq(c).nonzero()[:], labels_unique))).view(-1)
-        support_labels, query_labels = support_labels[support_idxs], query_labels[query_idxs]
-        x, labels = torch.cat((support_x, query_x), dim=0), torch.cat((support_labels, query_labels), dim=0)
         x_class_embed = x[:, :, -self.class_embed_dim:].unsqueeze(2).repeat(1, 1, labels_unique.size(0), 1) # (batch, num_patch, class_per_epi, class_embed_dim)
         target_class_embed = self.cls_token[labels_unique].unsqueeze(0).unsqueeze(0).repeat(batch, num_patch, 1, 1) # (batch, num_patch, class_per_epi, class_embed_dim)
         dist = torch.pow(x_class_embed - target_class_embed, 2).sum(-1) # (batch, num_patch, class_per_epi)
@@ -283,7 +264,7 @@ class ViT(nn.Module):
         loss = x_entropy(dist, labels) # (batch, class_per_epi)
 
         _, y_hat = dist[self.num_support * self.cls_per_episode:, :].max(1)
-        acc_val = y_hat.eq(query_labels).float().mean()
+        acc_val = y_hat.eq(labels[self.num_support * self.cls_per_episode:]).float().mean()
 
         return loss, acc_val
 
