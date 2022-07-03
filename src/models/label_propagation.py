@@ -57,7 +57,7 @@ class Attention(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         self.to_qk = nn.Linear(embed_dim, inner_dim * 2, bias=True)
-        self.to_v = nn.Linear(embed_dim + class_embed_dim, inner_dim + class_embed_dim, bias=True)
+        self.to_v = nn.Linear(embed_dim + class_embed_dim, inner_dim + class_embed_dim, bias=True) # TODO 是否需要linear
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim + class_embed_dim, embed_dim + class_embed_dim),
             nn.Dropout(dropout)
@@ -65,6 +65,7 @@ class Attention(nn.Module):
 
     def forward(self, x):
         # x: (batch, num_patch, embed_dim + class_embed_dim)
+        # q, k -> x[:, :, :embed_dim]
         qk = self.to_qk(x[:, :, -self.class_embed_dim:]).chunk(2, dim=-1) # tuple: ((batch, num_patch, inner_dim))
         v = self.to_v(x) # (batch, num_patch, inner_dim)
         q, k = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), qk) # (batch, num_head, num_patch, head_dim)
@@ -77,7 +78,7 @@ class Attention(nn.Module):
         out = torch.matmul(attn, v) # attn矩阵乘v不是点乘（对v加权），v的维度不变
         out = rearrange(out, 'b h n d -> b n (h d)') # (batch, num_patch, inner_dim)
 
-        return self.to_out(out)
+        return self.to_out(out) # TODO 分开过？
 
 
 class Transformer(nn.Module):
@@ -185,9 +186,12 @@ class ViT(nn.Module):
             )
 
         self.pos_embedding = nn.Parameter(torch.randn(1, self.num_patch, embed_dim))
-        self.class_embed_dim = class_embed_dim
-        self.cls_token = nn.Parameter(torch.zeros(total_class + 1, self.class_embed_dim)) # patch维度的class_embed
         trunc_normal_(self.pos_embedding, std=.02)
+
+        self.class_embed_dim = class_embed_dim
+
+        ## TODO 修正为(class_per_episode + 1, class_embed_dim)，正交初始化
+        self.cls_token = nn.Parameter(torch.zeros(self.cls_per_episode + 1, self.class_embed_dim)) # patch维度的class_embed
         trunc_normal_(self.cls_token, std=.02)
 
         self.dropout = nn.Dropout(emb_dropout)
@@ -202,8 +206,8 @@ class ViT(nn.Module):
             nn.Linear(embed_dim, out_dim)
         )
         self.use_avg_pool_out = use_avg_pool_out
-        self.norm = nn.LayerNorm(embed_dim) ## TODO 维度确定
-        self.avg_pool = nn.AdaptiveAvgPool1d(1) ## TODO 维度确定
+        self.norm = nn.LayerNorm(embed_dim)
+        self.avg_pool = nn.AdaptiveAvgPool1d(1)
 
         self.out_head = nn.Sequential(
             nn.LayerNorm((self.num_patch + 1) * embed_dim),
@@ -234,9 +238,11 @@ class ViT(nn.Module):
         b, n, _ = x.shape
         x += self.pos_embedding[:, :n] # (batch, num_patch, embed_dim)
 
+        labels = self._map2ZeroStart(labels)
         labels_unique, _ = torch.sort(torch.unique(labels))
         ## 拆分support和query，加上对应的class_embedding，并把数据打乱
         support_idxs, query_idxs = self._support_query_data(labels)  # (class_per_episode * num_support)
+        ## TODO class_token相对于episode
         support_cls_tokens, query_cls_tokens = \
             self.cls_token[labels[support_idxs]].unsqueeze(1).repeat(1, self.num_patch, 1), self.cls_token[-1, :].view(1, 1, -1).repeat(self.num_query * self.cls_per_episode, self.num_patch, 1) # (num_support, num_patch, class_embed_dim)
         support_x, query_x = torch.cat((support_cls_tokens, x[support_idxs]), dim=-1), torch.cat((query_cls_tokens, x[query_idxs]), dim=-1) # patch维度拼接, (num_support, num_patch, embed_dim + embed_dim), (num_query, num_patch, embed_dim + embed_dim)
@@ -255,34 +261,23 @@ class ViT(nn.Module):
         support_idxs, query_idxs = \
             (batch_idxs < self.num_support * self.cls_per_episode).nonzero(as_tuple=True)[0], (batch_idxs >= self.num_support * self.cls_per_episode).nonzero(as_tuple=True)[0] # (class_per_episode * num_support)
         support_labels, query_labels = labels[support_idxs], labels[query_idxs]
-
+        support_x, query_x = x[support_idxs], x[query_idxs]
         ## 按照标签的顺序，重新排列support和query的数据
         support_idxs, query_idxs = torch.stack(list(map(lambda c: support_labels.eq(c).nonzero()[:], labels_unique))).view(-1), \
                                        torch.stack(list(map(lambda c: query_labels.eq(c).nonzero()[:], labels_unique))).view(-1)
         support_labels, query_labels = support_labels[support_idxs], query_labels[query_idxs]
-        x, labels = torch.cat((x[support_idxs], x[query_idxs]), dim=0), torch.cat((labels[support_idxs], labels[query_idxs]))
+        x, labels = torch.cat((support_x, query_x), dim=0), torch.cat((support_labels, query_labels), dim=0)
         x_class_embed = x[:, :, -self.class_embed_dim:].unsqueeze(2).repeat(1, 1, labels_unique.size(0), 1) # (batch, num_patch, class_per_epi, class_embed_dim)
         target_class_embed = self.cls_token[labels_unique].unsqueeze(0).unsqueeze(0).repeat(batch, num_patch, 1, 1) # (batch, num_patch, class_per_epi, class_embed_dim)
         dist = torch.pow(x_class_embed - target_class_embed, 2).sum(-1) # (batch, num_patch, class_per_epi)
-        loss_log = F.log_softmax(self.avg_pool(dist.transpose(1, 2)).transpose(1, 2).squeeze(1), dim=-1) # (batch, class_per_epi)
+        dist = self.avg_pool(dist.transpose(1, 2)).transpose(1, 2).squeeze(1) # (batch, class_per_epi)
+        x_entropy = nn.CrossEntropyLoss().cuda()
+        loss = x_entropy(dist, labels) # (batch, class_per_epi)
 
-        support_loss, query_loss = \
-            loss_log[:self.num_support * self.cls_per_episode, :].view(self.cls_per_episode, self.num_support, -1),\
-            loss_log[self.num_support * self.cls_per_episode:, :].view(self.cls_per_episode, self.num_query, -1)
+        _, y_hat = dist[self.num_support * self.cls_per_episode:, :].max(1)
+        acc_val = y_hat.eq(query_labels).float().mean()
 
-        target_idx = torch.arange(self.cls_per_episode).view(self.cls_per_episode, 1, 1)
-        if torch.cuda.is_available():
-            target_idx = target_idx.cuda()
-        support_target_idx, query_target_idx = \
-            target_idx.expand(self.cls_per_episode, self.num_support, 1).long(), target_idx.expand(self.cls_per_episode, self.num_query, 1).long()
-        support_loss_val, query_loss_val = \
-            -support_loss.gather(2, support_target_idx).squeeze().view(-1).mean(), -query_loss.gather(2, query_target_idx).squeeze().view(-1).mean()
-        loss_val = support_loss_val + query_loss_val
-
-        _, y_hat = query_loss.max(2)
-        acc_val = y_hat.eq(query_target_idx.squeeze(2)).float().mean()
-
-        return loss_val, acc_val
+        return loss, acc_val
 
 
     def _support_query_data(self, labels):
@@ -290,6 +285,16 @@ class ViT(nn.Module):
         support_idxs = torch.stack(list(map(lambda c: labels.eq(c).nonzero()[:self.num_support], labels_unique))).view(-1)  # (class_per_episode * num_support)
         query_idxs = torch.stack(list(map(lambda c: labels.eq(c).nonzero()[self.num_support:], labels_unique))).view(-1)  # (class_per_episode * num_query)
         return support_idxs, query_idxs
+
+
+    def _map2ZeroStart(self, labels):
+        labels_unique, _ = torch.sort(torch.unique(labels))
+        labels_index = torch.zeros(self.total_class)
+        for idx, label in enumerate(labels_unique):
+            labels_index[label] = idx
+        for i in range(labels.size(0)):
+            labels[i] = labels_index[labels[i]]
+        return labels
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
