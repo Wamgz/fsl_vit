@@ -228,6 +228,7 @@ class ViT(nn.Module):
         :return:
         '''
         ## patch embedding
+        logger.info('=== imgs: {}, labels : {} === '.format(imgs.shape, labels.shape))
         x = self.to_patch_embedding(imgs) # (batch, num_patch, patch_size * patch_size) -> (100, 12 * 12, 64)
         if self.use_dual_feature:
             x_1 = self.to_patch_embedding(F.interpolate(imgs, [64, 64]))
@@ -240,6 +241,8 @@ class ViT(nn.Module):
 
         labels = self._map2ZeroStart(labels)
         labels_unique, _ = torch.sort(torch.unique(labels))
+        logger.info('=== labels: {}, labels_unique : {} === '.format(labels, labels_unique))
+
         ## 拆分support和query，加上对应的class_embedding，并把数据打乱
         support_idxs, query_idxs = self._support_query_data(labels)  # (class_per_episode * num_support)
         ## TODO class_token相对于episode
@@ -249,6 +252,7 @@ class ViT(nn.Module):
         x, labels = torch.cat((support_x, query_x), dim=0), torch.cat((labels[support_idxs], labels[query_idxs]))
         rand_idxs = torch.randperm(labels.size(0))
         x, labels = x[rand_idxs], labels[rand_idxs]
+        logger.info('=== x: {}, labels : {} === '.format(x.shape, labels))
 
         ## transformer
         x = self.dropout(x)
@@ -260,8 +264,12 @@ class ViT(nn.Module):
         batch_idxs = torch.cat((support_idxs, query_idxs))[rand_idxs] ## 按照打乱img和label的顺序打乱idx
         support_idxs, query_idxs = \
             (batch_idxs < self.num_support * self.cls_per_episode).nonzero(as_tuple=True)[0], (batch_idxs >= self.num_support * self.cls_per_episode).nonzero(as_tuple=True)[0] # (class_per_episode * num_support)
+        logger.info('=== support_idxs: {}, query_idxs : {} === '.format(support_idxs, query_idxs))
         support_labels, query_labels = labels[support_idxs], labels[query_idxs]
+        logger.info('=== support_labels: {}, query_labels : {} === '.format(support_labels, query_labels))
         support_x, query_x = x[support_idxs], x[query_idxs]
+        logger.info('=== support_x: {}, query_x : {} === '.format(support_x.shape, query_x.shape))
+
         ## 按照标签的顺序，重新排列support和query的数据
         support_idxs, query_idxs = torch.stack(list(map(lambda c: support_labels.eq(c).nonzero()[:], labels_unique))).view(-1), \
                                        torch.stack(list(map(lambda c: query_labels.eq(c).nonzero()[:], labels_unique))).view(-1)
