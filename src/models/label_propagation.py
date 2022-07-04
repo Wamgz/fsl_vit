@@ -228,7 +228,6 @@ class ViT(nn.Module):
         :return:
         '''
         ## patch embedding
-        logger.info('=== imgs: {}, labels : {} === '.format(imgs.shape, labels.shape))
         x = self.to_patch_embedding(imgs) # (batch, num_patch, patch_size * patch_size) -> (100, 12 * 12, 64)
         if self.use_dual_feature:
             x_1 = self.to_patch_embedding(F.interpolate(imgs, [64, 64]))
