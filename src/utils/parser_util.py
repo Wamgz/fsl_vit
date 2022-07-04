@@ -149,4 +149,8 @@ def get_parser():
                         type=str,
                         help='comment',
                         default='')
+    parser.add_argument('-use_linear_v', '--use_linear_v',
+                        type=bool,
+                        help='if or not to use pretrained model',
+                        default=True)
     return parser

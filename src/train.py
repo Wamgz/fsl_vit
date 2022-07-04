@@ -95,7 +95,8 @@ def init_model(opt):
         tsfm_dropout=0.1,
         emb_dropout=0.1,
         use_avg_pool_out=True,
-        channels=3
+        channels=3,
+        use_linear_v=opt.use_linear_v
     ).cuda()
 
 def init_optim(opt, model, mlp=None):

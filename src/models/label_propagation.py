@@ -44,7 +44,7 @@ class FeedForward(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, embed_dim, class_embed_dim, num_patch, heads=8, dim_head=64, dropout=0.):
+    def __init__(self, embed_dim, class_embed_dim, num_patch, heads=8, dim_head=64, dropout=0., user_linear_v=True):
         super().__init__()
         inner_dim = dim_head * heads # 1024
         project_out = not (heads == 1 and dim_head == embed_dim)
@@ -56,8 +56,13 @@ class Attention(nn.Module):
         self.attend = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(dropout)
 
-        self.to_qk = nn.Linear(embed_dim, inner_dim * 2, bias=True)
-        self.to_v = nn.Linear(embed_dim + class_embed_dim, inner_dim + class_embed_dim, bias=True) # TODO 是否需要linear
+        self.to_qk = nn.Linear(embed_dim, inner_dim * 2, bias=False)
+
+        if user_linear_v:
+            self.to_v = nn.Linear(embed_dim + class_embed_dim, inner_dim + class_embed_dim, bias=False) # TODO 是否需要linear
+        else:
+            self.to_v = nn.Identity()
+
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim + class_embed_dim, embed_dim + class_embed_dim),
             nn.Dropout(dropout)
@@ -82,12 +87,12 @@ class Attention(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, embed_dim, class_embed_dim, depth, heads, dim_head, mlp_dim, num_patch, dropout=0.):
+    def __init__(self, embed_dim, class_embed_dim, depth, heads, dim_head, mlp_dim, num_patch, dropout=0., use_linear_v=True):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(nn.ModuleList([ # 这里是先进行norm，再进行Attention和FFN
-                PreNorm(embed_dim + class_embed_dim, Attention(embed_dim, class_embed_dim=class_embed_dim, num_patch=num_patch, heads=heads, dim_head=dim_head, dropout=dropout)),
+                PreNorm(embed_dim + class_embed_dim, Attention(embed_dim, class_embed_dim=class_embed_dim, num_patch=num_patch, heads=heads, dim_head=dim_head, dropout=dropout, use_linear_v=use_linear_v)),
                 PreNorm(embed_dim + class_embed_dim, FeedForward(embed_dim + class_embed_dim, mlp_dim + class_embed_dim, dropout=dropout))
             ]))
 
@@ -157,7 +162,7 @@ class Mlp(nn.Module):
 class ViT(nn.Module):
     def __init__(self, *, image_size, patch_size, out_dim, embed_dim, depth, heads, mlp_dim, class_embed_dim=64, total_class=100, cls_per_episode=5,
                  support_num=5, query_num=15, pool='cls', channels=1, dim_head=12, tsfm_dropout=0., emb_dropout=0., feature_only=False, pretrained=False, patch_norm=True, conv_patch_embedding=False,
-                 use_avg_pool_out=False, use_dual_feature=False):
+                 use_avg_pool_out=False, use_dual_feature=False, use_linear_v=True):
         super().__init__()
         self.pretrained = pretrained
 
@@ -190,13 +195,12 @@ class ViT(nn.Module):
 
         self.class_embed_dim = class_embed_dim
 
-        ## TODO 修正为(class_per_episode + 1, class_embed_dim)，正交初始化
         self.cls_token = nn.Parameter(torch.zeros(self.cls_per_episode + 1, self.class_embed_dim)) # patch维度的class_embed
-        trunc_normal_(self.cls_token, std=.02)
+        torch.nn.init.orthogonal_(self.cls_token, gain=1)
 
         self.dropout = nn.Dropout(emb_dropout)
         # dim: 1024, depth: 6, heads: 16, dim_head: 64, mlp_dim: 2048, dropout: 0.1
-        self.transformer = Transformer(embed_dim, class_embed_dim, depth, heads, dim_head, mlp_dim, self.num_patch, tsfm_dropout)
+        self.transformer = Transformer(embed_dim, class_embed_dim, depth, heads, dim_head, mlp_dim, self.num_patch, tsfm_dropout, use_linear_v=use_linear_v)
 
         self.pool = pool
         self.to_latent = nn.Identity()
