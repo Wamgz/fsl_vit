@@ -44,7 +44,7 @@ class FeedForward(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, embed_dim, class_embed_dim, num_patch, heads=8, dim_head=64, dropout=0., user_linear_v=True):
+    def __init__(self, embed_dim, class_embed_dim, num_patch, heads=8, dim_head=64, dropout=0., use_linear_v=True):
         super().__init__()
         inner_dim = dim_head * heads # 1024
         project_out = not (heads == 1 and dim_head == embed_dim)
@@ -58,7 +58,7 @@ class Attention(nn.Module):
 
         self.to_qk = nn.Linear(embed_dim, inner_dim * 2, bias=False)
 
-        if user_linear_v:
+        if use_linear_v:
             self.to_v = nn.Linear(embed_dim + class_embed_dim, inner_dim + class_embed_dim, bias=False) # TODO 是否需要linear
         else:
             self.to_v = nn.Identity()
