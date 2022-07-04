@@ -17,5 +17,5 @@ python ../train.py \
 --use_join_loss true \
 --cuda 2 \
 --use_aux_loss true \
---use_linear_v False \
+--use_linear_v false \
 --comment "不使用v的linear"
