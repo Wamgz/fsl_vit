@@ -264,10 +264,10 @@ class ViT(nn.Module):
         dist = torch.pow(x_class_embed - target_class_embed, 2).sum(-1) # (batch, num_patch, class_per_epi)
         dist = self.avg_pool(dist.transpose(1, 2)).transpose(1, 2).squeeze(1) # (batch, class_per_epi)
         x_entropy = nn.CrossEntropyLoss().cuda()
-        loss = x_entropy(dist, labels) # (batch, class_per_epi)
-        log_p_y = F.log_softmax(-dist, dim=1)
+        loss = x_entropy(-dist, labels) # (batch, class_per_epi)
 
-        _, y_hat = log_p_y[self.num_support * self.cls_per_episode:, :].max(1)
+        _, y_hat = (-1 * dist[self.num_support * self.cls_per_episode:, :]).max(1)
+        logger.info("dist: {}, y_hat: {}".format(dist, y_hat))
         acc_val = y_hat.eq(labels[self.num_support * self.cls_per_episode:]).float().mean()
 
         return loss, acc_val
