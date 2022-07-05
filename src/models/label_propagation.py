@@ -47,7 +47,7 @@ class Attention(nn.Module):
     def __init__(self, embed_dim, class_embed_dim, num_patch, heads=8, dim_head=64, dropout=0., use_linear_v=True):
         super().__init__()
         inner_dim = dim_head * heads # 1024
-        project_out = not (heads == 1 and dim_head == embed_dim)
+        project_out = False
         self.embed_dim = embed_dim
         self.class_embed_dim = class_embed_dim
         self.heads = heads
@@ -63,6 +63,7 @@ class Attention(nn.Module):
         else:
             self.to_v = nn.Identity()
 
+
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim + class_embed_dim, embed_dim + class_embed_dim),
             nn.Dropout(dropout)
@@ -71,7 +72,7 @@ class Attention(nn.Module):
     def forward(self, x):
         # x: (batch, num_patch, embed_dim + class_embed_dim)
         # q, k -> x[:, :, :embed_dim]
-        qk = self.to_qk(x[:, :, -self.class_embed_dim:]).chunk(2, dim=-1) # tuple: ((batch, num_patch, inner_dim))
+        qk = self.to_qk(x[:, :, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch, num_patch, inner_dim))
         v = self.to_v(x) # (batch, num_patch, inner_dim)
         q, k = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), qk) # (batch, num_head, num_patch, head_dim)
         v = rearrange(v, 'b n (h d) -> b h n d', h=self.heads) #  (batch, num_head, num_patch, head_dim)
@@ -249,7 +250,8 @@ class ViT(nn.Module):
         support_idxs, query_idxs = self._support_query_data(labels)  # (class_per_episode * num_support)
         support_cls_tokens, query_cls_tokens = \
             self.cls_token[labels[support_idxs]].unsqueeze(1).repeat(1, self.num_patch, 1), self.cls_token[-1, :].view(1, 1, -1).repeat(self.num_query * self.cls_per_episode, self.num_patch, 1) # (num_support, num_patch, class_embed_dim)
-        support_x, query_x = torch.cat((support_cls_tokens, x[support_idxs]), dim=-1), torch.cat((query_cls_tokens, x[query_idxs]), dim=-1) # patch维度拼接, (num_support, num_patch, embed_dim + embed_dim), (num_query, num_patch, embed_dim + embed_dim)
+        # support_x1, query_x1 = x[support_idxs], x[query_idxs]
+        support_x, query_x = torch.cat((x[support_idxs], support_cls_tokens), dim=-1), torch.cat((x[query_idxs], query_cls_tokens), dim=-1) # patch维度拼接, (num_support, num_patch, embed_dim + embed_dim), (num_query, num_patch, embed_dim + embed_dim)
         x, labels = torch.cat((support_x, query_x), dim=0), torch.cat((labels[support_idxs], labels[query_idxs]))
 
         ## transformer
@@ -263,7 +265,9 @@ class ViT(nn.Module):
         target_class_embed = self.cls_token[labels_unique].unsqueeze(0).unsqueeze(0).repeat(batch, num_patch, 1, 1) # (batch, num_patch, class_per_epi, class_embed_dim)
         dist = torch.pow(x_class_embed - target_class_embed, 2).sum(-1) # (batch, num_patch, class_per_epi)
         dist = self.avg_pool(dist.transpose(1, 2)).transpose(1, 2).squeeze(1) # (batch, class_per_epi)
-        x_entropy = nn.CrossEntropyLoss().cuda()
+        x_entropy = nn.CrossEntropyLoss()
+        if torch.cuda.is_available():
+            x_entropy = x_entropy.cuda()
         loss = x_entropy(-dist, labels) # (batch, class_per_epi)
 
         _, y_hat = (-1 * dist[self.num_support * self.cls_per_episode:, :]).max(1)
@@ -321,8 +325,8 @@ if __name__ == '__main__':
             heads=8,
             dim_head=8,
             mlp_dim=64,
-            tsfm_dropout=0.1,
-            emb_dropout=0.1,
+            tsfm_dropout=0.0,
+            emb_dropout=0.0,
             use_avg_pool_out=True,
             channels=3
         )
@@ -332,6 +336,7 @@ if __name__ == '__main__':
     imgs = torch.cat((support, query), 0)
     support_labels = torch.arange(5).view(1, -1).repeat(5, 1).view(-1) + 2
     query_labels = torch.arange(5).view(1, -1).repeat(15, 1).view(-1) + 2
+    support_labels, query_labels = support_labels[torch.randperm(25)], query_labels[torch.randperm(75)]
     labels = torch.cat((support_labels, query_labels), 0)
     out = model(imgs, labels)
 
