@@ -265,8 +265,8 @@ class ViT(nn.Module):
         dist = self.avg_pool(dist.transpose(1, 2)).transpose(1, 2).squeeze(1) # (batch, class_per_epi)
         x_entropy = nn.CrossEntropyLoss().cuda()
         loss = x_entropy(dist, labels) # (batch, class_per_epi)
-
         _, y_hat = dist[self.num_support * self.cls_per_episode:, :].max(1)
+        logger.info("dist: {}, y_hat: {}", dist, y_hat)
         acc_val = y_hat.eq(labels[self.num_support * self.cls_per_episode:]).float().mean()
 
         return loss, acc_val
