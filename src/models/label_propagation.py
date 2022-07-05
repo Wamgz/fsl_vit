@@ -267,7 +267,6 @@ class ViT(nn.Module):
         loss = x_entropy(-dist, labels) # (batch, class_per_epi)
 
         _, y_hat = (-1 * dist[self.num_support * self.cls_per_episode:, :]).max(1)
-        logger.info("dist: {}, y_hat: {}".format(dist, y_hat))
         acc_val = y_hat.eq(labels[self.num_support * self.cls_per_episode:]).float().mean()
 
         return loss, acc_val
