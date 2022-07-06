@@ -164,7 +164,6 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
 
     for epoch in range(opt.epochs):
         logger.info('=== Epoch: {}, Learning Rate : {} === '.format(epoch, optim.state_dict()['param_groups'][0]['lr']))
-        logger.info('=== Epoch: {}, model : {} === '.format(epoch, next(model.parameters()).device))
         tr_iter = iter(tr_dataloader)
         model.train()
         for batch in tqdm(tr_iter):
@@ -180,7 +179,7 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
         train_avg_acc = torch.tensor(train_acc[-opt.iterations:]).mean()
         logger.info('Avg Train Loss: {}, Avg Train Acc: {}'.format(train_avg_loss, train_avg_acc))
         if epoch % 5 == 0:
-            logger.info('=== Epoch: {}, cls_embedding : {} === '.format(epoch, model.cls_token.device))
+            logger.info('=== Epoch: {}, cls_embedding : {} === '.format(epoch, model.cls_token))
 
         append2pane(torch.FloatTensor([epoch]), train_avg_loss, env, train_loss_pane)
         append2pane(torch.FloatTensor([epoch]), train_avg_acc, env, train_acc_pane)
