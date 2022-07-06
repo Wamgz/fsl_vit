@@ -177,6 +177,9 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
         train_avg_loss = torch.tensor(train_loss[-opt.iterations:]).mean()
         train_avg_acc = torch.tensor(train_acc[-opt.iterations:]).mean()
         logger.info('Avg Train Loss: {}, Avg Train Acc: {}'.format(train_avg_loss, train_avg_acc))
+        if epoch % 5 == 0:
+            logger.info('=== Epoch: {}, cls_embedding : {} === '.format(epoch, model.cls_token))
+
         append2pane(torch.FloatTensor([epoch]), train_avg_loss, env, train_loss_pane)
         append2pane(torch.FloatTensor([epoch]), train_avg_acc, env, train_acc_pane)
         lr_scheduler.step()
@@ -222,13 +225,10 @@ def test(opt, test_dataloader, model, test_dataset=None):
     for epoch in range(10):
         test_iter = iter(test_dataloader)
         for batch in test_iter:
-            x, y = batch
+            x, y = batch  # x: (batch, C, H, W), y:(batch, )
             x, y = x.cuda(), y.cuda()
-            model_output = model(x)
-            _, x_entropy, acc = loss_fn(model_output, labels=y,
-                             n_support=opt.num_support_val,
-                             n_query=opt.num_query_val,
-                             aux_loss=opt.use_aux_loss)
+            loss, acc = model(x, y)
+
             avg_acc.append(acc.detach())
     avg_acc = torch.tensor(avg_acc).mean()
     logger.info('Test Acc: {}'.format(avg_acc))
