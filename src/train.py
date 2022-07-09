@@ -178,8 +178,6 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
         train_avg_loss = torch.tensor(train_loss[-opt.iterations:]).mean()
         train_avg_acc = torch.tensor(train_acc[-opt.iterations:]).mean()
         logger.info('Avg Train Loss: {}, Avg Train Acc: {}'.format(train_avg_loss, train_avg_acc))
-        if epoch % 5 == 0:
-            logger.info('=== Epoch: {}, cls_embedding : {} === '.format(epoch, model.cls_token))
 
         append2pane(torch.FloatTensor([epoch]), train_avg_loss, env, train_loss_pane)
         append2pane(torch.FloatTensor([epoch]), train_avg_acc, env, train_acc_pane)
