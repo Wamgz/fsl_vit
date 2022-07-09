@@ -18,4 +18,4 @@ python ../train.py \
 --cuda 3 \
 --use_aux_loss true \
 --use_linear_v false \
---comment "不使用v的linear"
+--comment "大batch&每个episode中tpn固定label wangzi 4 minutes ago"
