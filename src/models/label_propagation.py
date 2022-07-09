@@ -69,22 +69,42 @@ class Attention(nn.Module):
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
 
+    ## TODO 尝试batch * num_patch做为一个大batch
     def forward(self, x):
-        # x: (batch, num_patch, embed_dim + class_embed_dim)
+        # x: (batch, num_patch, embed_dim + class_embed_dim) -> (batch * num_patch, embed_dim + class_embed_dim)
         # q, k -> x[:, :, :embed_dim]
-        qk = self.to_qk(x[:, :, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch, num_patch, inner_dim))
-        v = self.to_v(x) # (batch, num_patch, inner_dim)
-        q, k = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), qk) # (batch, num_head, num_patch, head_dim)
-        v = rearrange(v, 'b n (h d) -> b h n d', h=self.heads) #  (batch, num_head, num_patch, head_dim)
-        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (batch, num_head, num_patch * num_patch, num_patch * num_patch)
+        batch, num_patch, dim = x.shape
+        x = rearrange(x, 'b n d -> (b n) d') # (batch * num_patch, embed_dim + class_embed_dim)
+        qk = self.to_qk(x[:, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch, num_patch, inner_dim))
+        v = self.to_v(x) # (batch * num_patch , inner_dim + class_embed_dim)
+        q, k = qk
+        # q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
+        # v = rearrange(v, 'B (h d) -> h B d', h=self.heads) #  (num_head, batch * num_patch, head_dim)
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (batch * num_patch, batch * num_patch)
 
-        attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch, num_head, num_patch * num_patch, num_patch * num_patch)
+        attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch * num_patch, batch * num_patch)
         attn = self.dropout(attn)
 
-        out = torch.matmul(attn, v) # attn矩阵乘v不是点乘（对v加权），v的维度不变
-        out = rearrange(out, 'b h n d -> b n (h d)') # (batch, num_patch, inner_dim)
+        out = torch.matmul(attn, v) # attn矩阵乘v不是点乘（对v加权），v:(batch * num_patch, inner_dim + class_embed_dim)
+        out = rearrange(out, '(b n) d -> b n d', b = batch, n = num_patch) # (batch, num_patch, inner_dim)
 
         return self.to_out(out) # TODO 分开过？
+    # def forward(self, x):
+    #     # x: (batch, num_patch, embed_dim + class_embed_dim)
+    #     # q, k -> x[:, :, :embed_dim]
+    #     qk = self.to_qk(x[:, :, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch, num_patch, inner_dim))
+    #     v = self.to_v(x) # (batch, num_patch, inner_dim)
+    #     q, k = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), qk) # (batch, num_head, num_patch, head_dim)
+    #     v = rearrange(v, 'b n (h d) -> b h n d', h=self.heads) #  (batch, num_head, num_patch, head_dim)
+    #     dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (batch, num_head, num_patch * num_patch, num_patch * num_patch)
+    #
+    #     attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch, num_head, num_patch * num_patch, num_patch * num_patch)
+    #     attn = self.dropout(attn)
+    #
+    #     out = torch.matmul(attn, v) # attn矩阵乘v不是点乘（对v加权），v的维度不变
+    #     out = rearrange(out, 'b h n d -> b n (h d)') # (batch, num_patch, inner_dim)
+    #
+    #     return self.to_out(out) # TODO 分开过？
 
 
 class Transformer(nn.Module):
@@ -161,7 +181,7 @@ class Mlp(nn.Module):
         return x
 
 class ViT(nn.Module):
-    def __init__(self, *, image_size, patch_size, out_dim, embed_dim, depth, heads, mlp_dim, class_embed_dim=64, total_class=100, cls_per_episode=5,
+    def __init__(self, *, image_size, patch_size, out_dim, embed_dim, depth, heads, mlp_dim, class_embed_dim=5, total_class=100, cls_per_episode=5,
                  support_num=5, query_num=15, pool='cls', channels=1, dim_head=12, tsfm_dropout=0., emb_dropout=0., feature_only=False, pretrained=False, patch_norm=True, conv_patch_embedding=False,
                  use_avg_pool_out=False, use_dual_feature=False, use_linear_v=True):
         super().__init__()
@@ -194,10 +214,10 @@ class ViT(nn.Module):
         self.pos_embedding = nn.Parameter(torch.randn(1, self.num_patch, embed_dim))
         trunc_normal_(self.pos_embedding, std=.02)
 
-        self.class_embed_dim = class_embed_dim
+        self.class_embed_dim = self.cls_per_episode
 
-        self.cls_token = nn.Parameter(torch.zeros(self.cls_per_episode + 1, self.class_embed_dim)) # patch维度的class_embed
-        torch.nn.init.orthogonal_(self.cls_token, gain=1)
+        # self.cls_token = nn.Parameter(torch.zeros(self.cls_per_episode + 1, self.class_embed_dim)) # patch维度的class_embed
+        # torch.nn.init.orthogonal_(self.cls_token, gain=1)
 
         self.dropout = nn.Dropout(emb_dropout)
         # dim: 1024, depth: 6, heads: 16, dim_head: 64, mlp_dim: 2048, dropout: 0.1
@@ -240,16 +260,17 @@ class ViT(nn.Module):
             x = torch.cat((x, x_1, x_2), dim=1) # num_patch维度拼接
             x = self.avg_pool_64(x.transpose(1, 2)).transpose(1, 2)
 
-        b, n, _ = x.shape
-        x += self.pos_embedding[:, :n] # (batch, num_patch, embed_dim)
+        batch, num_patch, _ = x.shape
+        x += self.pos_embedding[:, :num_patch] # (batch, num_patch, embed_dim)
 
         labels = self._map2ZeroStart(labels)
         labels_unique, _ = torch.sort(torch.unique(labels))
 
         ## 拆分support和query，加上对应的class_embedding
-        support_idxs, query_idxs = self._support_query_data(labels)  # (class_per_episode * num_support)
+        support_idxs, query_idxs = self._support_query_data(labels)
+        support_cls_token = torch.nn.functional.one_hot(labels[support_idxs], self.cls_per_episode) # (num_support, class_per_episode)
         support_cls_tokens, query_cls_tokens = \
-            self.cls_token[labels[support_idxs]].unsqueeze(1).repeat(1, self.num_patch, 1), self.cls_token[-1, :].view(1, 1, -1).repeat(self.num_query * self.cls_per_episode, self.num_patch, 1) # (num_support, num_patch, class_embed_dim)
+            support_cls_token.unsqueeze(1).repeat(1, self.num_patch, 1), torch.zeros(query_idxs.size(0), num_patch, self.cls_per_episode) # (num_support, num_patch, class_embed_dim)
         # support_x1, query_x1 = x[support_idxs], x[query_idxs]
         support_x, query_x = torch.cat((x[support_idxs], support_cls_tokens), dim=-1), torch.cat((x[query_idxs], query_cls_tokens), dim=-1) # patch维度拼接, (num_support, num_patch, embed_dim + embed_dim), (num_query, num_patch, embed_dim + embed_dim)
         x, labels = torch.cat((support_x, query_x), dim=0), torch.cat((labels[support_idxs], labels[query_idxs]))
@@ -259,18 +280,13 @@ class ViT(nn.Module):
         x = self.transformer(x) # (batch, num_patch, embedding_dim + class_embed_dim)
 
         ## 取出class_embed进行loss计算，(support和query）都计算
-        batch, num_patch = x.size(0), x.size(1)
-
-        x_class_embed = x[:, :, -self.class_embed_dim:].unsqueeze(2).repeat(1, 1, labels_unique.size(0), 1) # (batch, num_patch, class_per_epi, class_embed_dim)
-        target_class_embed = self.cls_token[labels_unique].unsqueeze(0).unsqueeze(0).repeat(batch, num_patch, 1, 1) # (batch, num_patch, class_per_epi, class_embed_dim)
-        dist = torch.pow(x_class_embed - target_class_embed, 2).sum(-1) # (batch, num_patch, class_per_epi)
-        dist = self.avg_pool(dist.transpose(1, 2)).transpose(1, 2).squeeze(1) # (batch, class_per_epi)
+        logits = self.avg_pool(x[:, :, -self.class_embed_dim:].transpose(1, 2)).transpose(1, 2).squeeze(1) # (batch, class_embed_dim)
         x_entropy = nn.CrossEntropyLoss()
         if torch.cuda.is_available():
             x_entropy = x_entropy.cuda()
-        loss = x_entropy(-dist, labels) # (batch, class_per_epi)
+        loss = x_entropy(logits, labels) # (batch, class_per_epi)
 
-        _, y_hat = (-1 * dist[self.num_support * self.cls_per_episode:, :]).max(1)
+        y_hat = torch.argmax(logits[self.num_support * self.cls_per_episode:, :], 1)
         acc_val = y_hat.eq(labels[self.num_support * self.cls_per_episode:]).float().mean()
 
         return loss, acc_val
