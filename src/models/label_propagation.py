@@ -268,9 +268,11 @@ class ViT(nn.Module):
 
         ## 拆分support和query，加上对应的class_embedding
         support_idxs, query_idxs = self._support_query_data(labels)
-        support_cls_token = torch.nn.functional.one_hot(labels[support_idxs], self.cls_per_episode) # (num_support, class_per_episode)
+        support_cls_token, query_cls_token = torch.nn.functional.one_hot(labels[support_idxs], self.cls_per_episode), torch.zeros(query_idxs.size(0), num_patch, self.cls_per_episode) # (num_support, class_per_episode)
+        if torch.cuda.is_available():
+            query_cls_token = query_cls_token.cuda()
         support_cls_tokens, query_cls_tokens = \
-            support_cls_token.unsqueeze(1).repeat(1, self.num_patch, 1), torch.zeros(query_idxs.size(0), num_patch, self.cls_per_episode) # (num_support, num_patch, class_embed_dim)
+            support_cls_token.unsqueeze(1).repeat(1, self.num_patch, 1), query_cls_token # (num_support, num_patch, class_embed_dim)
         # support_x1, query_x1 = x[support_idxs], x[query_idxs]
         support_x, query_x = torch.cat((x[support_idxs], support_cls_tokens), dim=-1), torch.cat((x[query_idxs], query_cls_tokens), dim=-1) # patch维度拼接, (num_support, num_patch, embed_dim + embed_dim), (num_query, num_patch, embed_dim + embed_dim)
         x, labels = torch.cat((support_x, query_x), dim=0), torch.cat((labels[support_idxs], labels[query_idxs]))
