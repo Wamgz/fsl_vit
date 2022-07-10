@@ -28,23 +28,24 @@ class PreNorm(nn.Module):
 class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim, dropout=0.):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(dim, hidden_dim),
-            Rearrange('b n e -> b e n'),
-            nn.BatchNorm1d(dim),
-            Rearrange('b e n -> b n e'),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, dim),
-            nn.Dropout(dropout)
-        )
+        self.net = nn.Identity()
+        # self.net = nn.Sequential(
+        #     nn.Linear(dim, hidden_dim),
+        #     Rearrange('b n e -> b e n'),
+        #     nn.BatchNorm1d(dim),
+        #     Rearrange('b e n -> b n e'),
+        #     nn.GELU(),
+        #     nn.Dropout(dropout),
+        #     nn.Linear(hidden_dim, dim),
+        #     nn.Dropout(dropout)
+        # )
 
     def forward(self, x):
         return self.net(x)
 
 
 class Attention(nn.Module):
-    def __init__(self, embed_dim, class_embed_dim, num_patch, heads=8, dim_head=64, dropout=0., use_linear_v=True):
+    def __init__(self, embed_dim, class_embed_dim, num_patch, heads=8, dim_head=64, dropout=0., use_linear_v=False):
         super().__init__()
         inner_dim = dim_head * heads # 1024
         project_out = False
@@ -75,7 +76,7 @@ class Attention(nn.Module):
         # q, k -> x[:, :, :embed_dim]
         batch, num_patch, dim = x.shape
         x = rearrange(x, 'b n d -> (b n) d') # (batch * num_patch, embed_dim + class_embed_dim)
-        qk = self.to_qk(x[:, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch, num_patch, inner_dim))
+        qk = self.to_qk(x[:, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch * num_patch, inner_dim))
         v = self.to_v(x) # (batch * num_patch , inner_dim + class_embed_dim)
         q, k = qk
         # q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
@@ -89,22 +90,6 @@ class Attention(nn.Module):
         out = rearrange(out, '(b n) d -> b n d', b = batch, n = num_patch) # (batch, num_patch, inner_dim)
 
         return self.to_out(out) # TODO 分开过？
-    # def forward(self, x):
-    #     # x: (batch, num_patch, embed_dim + class_embed_dim)
-    #     # q, k -> x[:, :, :embed_dim]
-    #     qk = self.to_qk(x[:, :, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch, num_patch, inner_dim))
-    #     v = self.to_v(x) # (batch, num_patch, inner_dim)
-    #     q, k = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), qk) # (batch, num_head, num_patch, head_dim)
-    #     v = rearrange(v, 'b n (h d) -> b h n d', h=self.heads) #  (batch, num_head, num_patch, head_dim)
-    #     dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (batch, num_head, num_patch * num_patch, num_patch * num_patch)
-    #
-    #     attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch, num_head, num_patch * num_patch, num_patch * num_patch)
-    #     attn = self.dropout(attn)
-    #
-    #     out = torch.matmul(attn, v) # attn矩阵乘v不是点乘（对v加权），v的维度不变
-    #     out = rearrange(out, 'b h n d -> b n (h d)') # (batch, num_patch, inner_dim)
-    #
-    #     return self.to_out(out) # TODO 分开过？
 
 
 class Transformer(nn.Module):
