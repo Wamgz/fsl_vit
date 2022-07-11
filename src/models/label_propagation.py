@@ -95,8 +95,8 @@ class Attention(nn.Module):
         qk = self.to_qk(x[:, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch * num_patch, inner_dim))
         v = self.to_v(x) # (batch * num_patch , inner_dim + class_embed_dim)
         q, k = qk
-        print('q.shape: ', q.shape, 'q: ', q)
-        print('k.shape: ', k.shape, 'k: ', k)
+        # print('q.shape: ', q.shape, 'q: ', q)
+        # print('k.shape: ', k.shape, 'k: ', k)
 
         # q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
         # v = rearrange(v, 'B (h d) -> h B d', h=self.heads) #  (num_head, batch * num_patch, head_dim)
@@ -112,7 +112,7 @@ class Attention(nn.Module):
         # print('attn.shape:', attn.shape, 'attn: ', attn)
 
         cls_token = torch.matmul(attn, v[:, -self.class_embed_dim:])  # attn矩阵乘v不是点乘（对v加权），v:(batch * num_patch, inner_dim + class_embed_dim)
-        print('cls_token', rearrange(cls_token, '(b n) d -> b n d', b = batch, n = num_patch).mean(1))
+        # print('cls_token', rearrange(cls_token, '(b n) d -> b n d', b = batch, n = num_patch).mean(1))
         out = torch.cat((v[:, :-self.class_embed_dim], cls_token), dim=-1)
 
         out = rearrange(out, '(b n) d -> b n d', b = batch, n = num_patch) # (batch, num_patch, inner_dim)
@@ -289,7 +289,7 @@ class ViT(nn.Module):
         # support_x1, query_x1 = x[support_idxs], x[query_idxs]
         support_x, query_x = torch.cat((x[support_idxs], support_cls_tokens), dim=-1), torch.cat((x[query_idxs], query_cls_tokens), dim=-1) # patch维度拼接, (num_support, num_patch, embed_dim + embed_dim), (num_query, num_patch, embed_dim + embed_dim)
         x, labels = torch.cat((support_x, query_x), dim=0), torch.cat((labels[support_idxs], labels[query_idxs]))
-        print('init cls_token: ', x[:, :, -self.cls_per_episode:])
+        # print('init cls_token: ', x[:, :, -self.cls_per_episode:])
         ## transformer
         x = self.dropout(x)
         x = self.transformer(x) # (batch, num_patch, embedding_dim + class_embed_dim)
