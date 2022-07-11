@@ -75,8 +75,8 @@ def init_dataloader(opt, mode):
         'num_workers': 8
     }
     dataloader = torch.utils.data.DataLoader(dataset, batch_sampler=sampler, **dataloader_params)
-    if torch.cuda.is_available():
-        dataloader = DataFetcher(dataloader)
+    # if torch.cuda.is_available():
+    #     dataloader = DataFetcher(dataloader)
     return dataset, dataloader
 
 
