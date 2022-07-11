@@ -106,7 +106,7 @@ class Transformer(nn.Module):
         for _ in range(depth):
             self.layers.append(nn.ModuleList([ # 这里是先进行norm，再进行Attention和FFN
                 PreNorm(embed_dim + class_embed_dim, Attention(embed_dim, class_embed_dim=class_embed_dim, num_patch=num_patch, heads=heads, dim_head=dim_head, dropout=dropout, use_linear_v=use_linear_v)),
-                PreNorm(embed_dim + class_embed_dim, FeedForward(embed_dim + class_embed_dim, mlp_dim + class_embed_dim, dropout=dropout))
+                PreNorm(embed_dim + class_embed_dim, FeedForward(embed_dim, mlp_dim, dropout=dropout))
             ]))
 
     def forward(self, x):
