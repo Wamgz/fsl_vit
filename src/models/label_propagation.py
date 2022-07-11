@@ -101,10 +101,7 @@ class Attention(nn.Module):
         # q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
         # v = rearrange(v, 'B (h d) -> h B d', h=self.heads) #  (num_head, batch * num_patch, head_dim)
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (batch * num_patch, batch * num_patch)
-        f = open('dots.txt', 'w')
-        f.write(str(dots))
-        f.write('\n\n')
-        print('dots.shape:', dots.shape, 'dots: ', dots)
+        print('dots.dtype:', dots.dtype, 'dots.shape:', dots.shape, 'dots: ', dots)
         # q = torch.unsqueeze(q, 1)  # N*1*d
         # k = torch.unsqueeze(k, 0)  # 1*N*d
         # dots = ((q - k) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
