@@ -91,7 +91,7 @@ class Attention(nn.Module):
         # dots = ((q - k) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
         attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch * num_patch, batch * num_patch)
         attn = self.dropout(attn)
-        cls_token = F.softmax(torch.matmul(attn, v[:, -self.class_embed_dim:]), dim=-1)  # attn矩阵乘v不是点乘（对v加权），v:(batch * num_patch, inner_dim + class_embed_dim)
+        cls_token = torch.matmul(attn, v[:, -self.class_embed_dim:], dim=-1)  # attn矩阵乘v不是点乘（对v加权），v:(batch * num_patch, inner_dim + class_embed_dim)
         print('cls_token', rearrange(cls_token, '(b n) d -> b n d', b = batch, n = num_patch).mean(1))
         out = torch.cat((v[:, :-self.class_embed_dim], cls_token), dim=-1)
 
