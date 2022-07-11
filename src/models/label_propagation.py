@@ -269,7 +269,7 @@ class ViT(nn.Module):
         # support_x1, query_x1 = x[support_idxs], x[query_idxs]
         support_x, query_x = torch.cat((x[support_idxs], support_cls_tokens), dim=-1), torch.cat((x[query_idxs], query_cls_tokens), dim=-1) # patch维度拼接, (num_support, num_patch, embed_dim + embed_dim), (num_query, num_patch, embed_dim + embed_dim)
         x, labels = torch.cat((support_x, query_x), dim=0), torch.cat((labels[support_idxs], labels[query_idxs]))
-
+        print('init cls_token: ', x[:, :, :-self.cls_per_episode])
         ## transformer
         x = self.dropout(x)
         x = self.transformer(x) # (batch, num_patch, embedding_dim + class_embed_dim)
@@ -283,7 +283,7 @@ class ViT(nn.Module):
 
         y_hat = torch.argmax(logits[self.num_support * self.cls_per_episode:, :], 1)
         acc_val = y_hat.eq(labels[self.num_support * self.cls_per_episode:]).float().mean()
-        print()
+        print('labels: ', labels)
         return loss, acc_val
 
 
