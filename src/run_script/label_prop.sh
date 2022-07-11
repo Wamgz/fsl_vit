@@ -12,7 +12,7 @@ python ../train.py \
 --height 96 \
 --width 96 \
 --iterations 1000 \
---learning_rate 0.0001 \
+--learning_rate 0.001 \
 --balance_scale 1 \
 --use_join_loss true \
 --cuda 3 \

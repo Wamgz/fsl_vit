@@ -18,30 +18,34 @@ def pair(t):
 class PreNorm(nn.Module):
     def __init__(self, dim, fn):
         super().__init__()
-        self.norm = nn.BatchNorm1d(dim) # 需要是float才行，long不行
+        self.norm = nn.LayerNorm(dim)
         self.fn = fn
 
     def forward(self, x, **kwargs):
-        x = rearrange(x, 'b n e -> b e n')
-        return self.fn(rearrange(self.norm(x), 'b e n -> b n e'), **kwargs)
+        return self.fn(self.norm(x), **kwargs)
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, dropout=0.):
+    def __init__(self, dim, hidden_dim, class_dim=5, dropout=0.):
         super().__init__()
-        self.net = nn.Identity()
-        # self.net = nn.Sequential(
-        #     nn.Linear(dim, hidden_dim),
-        #     Rearrange('b n e -> b e n'),
-        #     nn.BatchNorm1d(dim),
-        #     Rearrange('b e n -> b n e'),
-        #     nn.GELU(),
-        #     nn.Dropout(dropout),
-        #     nn.Linear(hidden_dim, dim),
-        #     nn.Dropout(dropout)
-        # )
+        self.cls_embeddim = class_dim
+        self.fc1 = nn.Linear(dim, hidden_dim)
+        self.ln = nn.LayerNorm(dim)
+        self.gelu = nn.GELU()
+        self.dropout1 = nn.Dropout(dropout)
+        self.fc2 = nn.Linear(hidden_dim, dim)
+        self.dropout2 = nn.Dropout(dropout)
 
     def forward(self, x):
-        return self.net(x)
+        cls_token = x[:, :, -self.cls_embeddim:]
+
+        x = self.fc1(x[:, :, :-self.cls_embeddim])
+        x = self.ln(x)
+        x = self.gelu(x)
+        x = self.dropout1(x)
+        x = self.fc2(x)
+        x = self.dropout2(x)
+        x = torch.cat((x, cls_token), dim=-1)
+        return x
 
 
 class Attention(nn.Module):
@@ -82,18 +86,21 @@ class Attention(nn.Module):
         # q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
         # v = rearrange(v, 'B (h d) -> h B d', h=self.heads) #  (num_head, batch * num_patch, head_dim)
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (batch * num_patch, batch * num_patch)
-
+        # q = torch.unsqueeze(q, 1)  # N*1*d
+        # k = torch.unsqueeze(k, 0)  # 1*N*d
+        # dots = ((q - k) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
         attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch * num_patch, batch * num_patch)
         attn = self.dropout(attn)
+        cls_token = F.softmax(torch.matmul(attn, v[:, -self.class_embed_dim:]), dim=-1)  # attn矩阵乘v不是点乘（对v加权），v:(batch * num_patch, inner_dim + class_embed_dim)
+        out = torch.cat((v[:, :-self.class_embed_dim], cls_token), dim=-1)
 
-        out = torch.matmul(attn, v) # attn矩阵乘v不是点乘（对v加权），v:(batch * num_patch, inner_dim + class_embed_dim)
         out = rearrange(out, '(b n) d -> b n d', b = batch, n = num_patch) # (batch, num_patch, inner_dim)
 
         return self.to_out(out) # TODO 分开过？
 
 
 class Transformer(nn.Module):
-    def __init__(self, embed_dim, class_embed_dim, depth, heads, dim_head, mlp_dim, num_patch, dropout=0., use_linear_v=True):
+    def __init__(self, embed_dim, class_embed_dim, depth, heads, dim_head, mlp_dim, num_patch, dropout=0., use_linear_v=False):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
@@ -168,7 +175,7 @@ class Mlp(nn.Module):
 class ViT(nn.Module):
     def __init__(self, *, image_size, patch_size, out_dim, embed_dim, depth, heads, mlp_dim, class_embed_dim=5, total_class=100, cls_per_episode=5,
                  support_num=5, query_num=15, pool='cls', channels=1, dim_head=12, tsfm_dropout=0., emb_dropout=0., feature_only=False, pretrained=False, patch_norm=True, conv_patch_embedding=False,
-                 use_avg_pool_out=False, use_dual_feature=False, use_linear_v=True):
+                 use_avg_pool_out=False, use_dual_feature=False, use_linear_v=False):
         super().__init__()
         self.pretrained = pretrained
 
@@ -267,7 +274,7 @@ class ViT(nn.Module):
         x = self.transformer(x) # (batch, num_patch, embedding_dim + class_embed_dim)
 
         ## 取出class_embed进行loss计算，(support和query）都计算
-        logits = self.avg_pool(x[:, :, -self.class_embed_dim:].transpose(1, 2)).transpose(1, 2).squeeze(1) # (batch, class_embed_dim)
+        logits = x[:, :, -self.class_embed_dim:].mean(2) # (batch, class_embed_dim)
         x_entropy = nn.CrossEntropyLoss()
         if torch.cuda.is_available():
             x_entropy = x_entropy.cuda()
@@ -275,7 +282,6 @@ class ViT(nn.Module):
 
         y_hat = torch.argmax(logits[self.num_support * self.cls_per_episode:, :], 1)
         acc_val = y_hat.eq(labels[self.num_support * self.cls_per_episode:]).float().mean()
-
         return loss, acc_val
 
 
