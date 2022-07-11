@@ -86,7 +86,7 @@ def init_model(opt):
     '''
     return ViT(
         image_size=96,
-        patch_size=16,
+        patch_size=32,
         out_dim=64,
         embed_dim=64,
         depth=4,
