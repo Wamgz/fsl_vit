@@ -8,7 +8,7 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from src.utils.logger_utils import logger
 import torch.nn.functional as F
 
-torch.set_printoptions(precision=None, threshold=99999999999, edgeitems=2, linewidth=None, profile=None)
+torch.set_printoptions(precision=None, threshold=10000, edgeitems=2, linewidth=None, profile=None)
 
 
 # helpers
