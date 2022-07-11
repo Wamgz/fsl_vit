@@ -59,7 +59,9 @@ class Attention(nn.Module):
         self.embed_dim = embed_dim
         self.class_embed_dim = class_embed_dim
         self.heads = heads
-        self.scale = dim_head ** -0.5
+        # self.scale = dim_head ** -0.5
+        self.scale = 1
+
         self.num_patch = num_patch
         self.attend = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(dropout)
