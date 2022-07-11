@@ -81,7 +81,7 @@ class Attention(nn.Module):
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
+            trunc_normal_(m.weight, std=1.0)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
@@ -112,7 +112,7 @@ class Attention(nn.Module):
         attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch * num_patch, batch * num_patch)
         print('attn.shape:', attn.shape, 'attn: ', attn)
 
-        cls_token = torch.matmul(attn, v[:, -self.class_embed_dim:])  # attn矩阵乘v不是点乘（对v加权），v:(batch * num_patch, inner_dim + class_embed_dim)
+        cls_token = torch.matmul(attn, v)  # attn矩阵乘v不是点乘（对v加权），v:(batch * num_patch, inner_dim + class_embed_dim)
         # print('cls_token', rearrange(cls_token, '(b n) d -> b n d', b = batch, n = num_patch).mean(1))
         out = torch.cat((v[:, :-self.class_embed_dim], cls_token), dim=-1)
 
