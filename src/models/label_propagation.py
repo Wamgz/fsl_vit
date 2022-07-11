@@ -94,9 +94,9 @@ class Attention(nn.Module):
         # q, k -> x[:, :, :embed_dim]
         batch, num_patch, dim = x.shape
         x = rearrange(x, 'b n d -> (b n) d') # (batch * num_patch, embed_dim + class_embed_dim)
-        qk = self.to_qk(x[:, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch * num_patch, inner_dim))
-        v = self.to_v(x) # (batch * num_patch , inner_dim + class_embed_dim)
-        q, k = qk
+        # qk = self.to_qk(x[:, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch * num_patch, inner_dim))
+        # v = self.to_v(x) # (batch * num_patch , inner_dim + class_embed_dim)
+        # q, k = qk
         # print('q.shape: ', q.shape, 'q: ', q)
         # print('k.shape: ', k.shape, 'k: ', k)
 
@@ -106,8 +106,8 @@ class Attention(nn.Module):
         # print('dots.dtype:', dots.dtype)
         # print('dots.shape:', dots.shape)
         # print('dots: ', dots[:3, :])
-        q = torch.unsqueeze(q, 1)  # N*1*d
-        k = torch.unsqueeze(k, 0)  # 1*N*d
+        q = torch.unsqueeze(x[:, :-self.class_embed_dim], 1)  # N*1*d
+        k = torch.unsqueeze(x[:, :-self.class_embed_dim], 0)  # 1*N*d
         dots = ((q - k) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
         attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch * num_patch, batch * num_patch)
         print('attn.shape:', attn.shape, 'attn: ', attn)
