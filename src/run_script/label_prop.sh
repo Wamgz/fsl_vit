@@ -15,7 +15,7 @@ python ../train.py \
 --learning_rate 0.001 \
 --balance_scale 1 \
 --use_join_loss true \
---cuda 3 \
+--cuda 2 \
 --use_aux_loss true \
 --use_linear_v false \
---comment "大batch&每个episode中tpn固定label wangzi 4 minutes ago"
+--comment "仅对label加权"
