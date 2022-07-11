@@ -62,7 +62,7 @@ class Attention(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         self.to_qk = nn.Linear(embed_dim, inner_dim * 2, bias=False)
-
+        self.apply(self._init_weights)
         if use_linear_v:
             self.to_v = nn.Linear(embed_dim + class_embed_dim, inner_dim + class_embed_dim, bias=False) # TODO 是否需要linear
         else:
@@ -74,6 +74,15 @@ class Attention(nn.Module):
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
 
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+
     ## TODO 尝试batch * num_patch做为一个大batch
     def forward(self, x):
         # x: (batch, num_patch, embed_dim + class_embed_dim) -> (batch * num_patch, embed_dim + class_embed_dim)
@@ -83,6 +92,9 @@ class Attention(nn.Module):
         qk = self.to_qk(x[:, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch * num_patch, inner_dim))
         v = self.to_v(x) # (batch * num_patch , inner_dim + class_embed_dim)
         q, k = qk
+        print('q.shape: ', q.shape, 'q: ', q)
+        print('k.shape: ', k.shape, 'k: ', k)
+
         # q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
         # v = rearrange(v, 'B (h d) -> h B d', h=self.heads) #  (num_head, batch * num_patch, head_dim)
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (batch * num_patch, batch * num_patch)
@@ -91,7 +103,7 @@ class Attention(nn.Module):
         # dots = ((q - k) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
         attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch * num_patch, batch * num_patch)
         attn = self.dropout(attn)
-        print('attn:', attn)
+        print('attn.shape:', attn.shape, 'attn: ', attn)
         cls_token = torch.matmul(attn, v[:, -self.class_embed_dim:])  # attn矩阵乘v不是点乘（对v加权），v:(batch * num_patch, inner_dim + class_embed_dim)
         print('cls_token', rearrange(cls_token, '(b n) d -> b n d', b = batch, n = num_patch).mean(1))
         out = torch.cat((v[:, :-self.class_embed_dim], cls_token), dim=-1)
