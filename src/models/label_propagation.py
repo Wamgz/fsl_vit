@@ -101,12 +101,16 @@ class Attention(nn.Module):
         # q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
         # v = rearrange(v, 'B (h d) -> h B d', h=self.heads) #  (num_head, batch * num_patch, head_dim)
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (batch * num_patch, batch * num_patch)
+        f = open('dots.txt', 'w')
+        f.write(str(dots))
+        f.write('\n\n')
         print('dots.shape:', dots.shape, 'dots: ', dots)
         # q = torch.unsqueeze(q, 1)  # N*1*d
         # k = torch.unsqueeze(k, 0)  # 1*N*d
         # dots = ((q - k) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
         attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch * num_patch, batch * num_patch)
         print('attn.shape:', attn.shape, 'attn: ', attn)
+
         cls_token = torch.matmul(attn, v[:, -self.class_embed_dim:])  # attn矩阵乘v不是点乘（对v加权），v:(batch * num_patch, inner_dim + class_embed_dim)
         print('cls_token', rearrange(cls_token, '(b n) d -> b n d', b = batch, n = num_patch).mean(1))
         out = torch.cat((v[:, :-self.class_embed_dim], cls_token), dim=-1)
