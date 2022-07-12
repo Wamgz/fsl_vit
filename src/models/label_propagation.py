@@ -38,14 +38,15 @@ class FeedForward(nn.Module):
         self.dropout1 = nn.Dropout(dropout)
         self.fc2 = nn.Linear(hidden_dim, dim)
         self.dropout2 = nn.Dropout(dropout)
+        self.bn = nn.BatchNorm1d(self.dim)
 
     def forward(self, x):
         cls_token = x[:, :, -self.cls_embeddim:]
 
         x = self.fc1(x[:, :, :-self.cls_embeddim])
-        Rearrange('b n e -> b e n'),
-        nn.BatchNorm1d(self.dim),
-        Rearrange('b e n -> b n e'),
+        x = rearrange(x, 'b n e -> b e n')
+        x = self.bn(x)
+        x = rearrange(x, 'b e n -> b n e')
         x = self.ln(x)
         x = self.gelu(x)
         x = self.dropout1(x)
@@ -100,9 +101,10 @@ class Attention(nn.Module):
         x = rearrange(x, 'b n d -> (b n) d') # (batch * num_patch, embed_dim + class_embed_dim)
         qk = self.to_qk(x[:, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch * num_patch, inner_dim))
         v = self.to_v(x) # (batch * num_patch , inner_dim + class_embed_dim)
-
-        q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
+        q, k = qk
+        # q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
         # v = rearrange(v, 'B (h d) -> h B d', h=self.heads) #  (num_head, batch * num_patch, head_dim)
+        ## TODO 对dots是否加个bn
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (num_head, batch * num_patch, batch * num_patch)
         # q = torch.unsqueeze(q, 1)  # N*1*d
         # k = torch.unsqueeze(k, 0)  # 1*N*d
