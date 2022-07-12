@@ -21,18 +21,19 @@ def pair(t):
 class PreNorm(nn.Module):
     def __init__(self, dim, fn):
         super().__init__()
-        self.norm = nn.LayerNorm(dim)
+        self.norm = nn.BatchNorm1d(dim) # 需要是float才行，long不行
         self.fn = fn
 
     def forward(self, x, **kwargs):
-        return self.fn(self.norm(x), **kwargs)
+        x = rearrange(x, 'b n e -> b e n')
+        return self.fn(rearrange(self.norm(x), 'b e n -> b n e'), **kwargs)
 
 class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim, class_dim=5, dropout=0.):
         super().__init__()
+        self.dim = dim
         self.cls_embeddim = class_dim
         self.fc1 = nn.Linear(dim, hidden_dim)
-        self.ln = nn.LayerNorm(dim)
         self.gelu = nn.GELU()
         self.dropout1 = nn.Dropout(dropout)
         self.fc2 = nn.Linear(hidden_dim, dim)
@@ -42,6 +43,9 @@ class FeedForward(nn.Module):
         cls_token = x[:, :, -self.cls_embeddim:]
 
         x = self.fc1(x[:, :, :-self.cls_embeddim])
+        Rearrange('b n e -> b e n'),
+        nn.BatchNorm1d(self.dim),
+        Rearrange('b e n -> b n e'),
         x = self.ln(x)
         x = self.gelu(x)
         x = self.dropout1(x)
@@ -94,24 +98,19 @@ class Attention(nn.Module):
         # q, k -> x[:, :, :embed_dim]
         batch, num_patch, dim = x.shape
         x = rearrange(x, 'b n d -> (b n) d') # (batch * num_patch, embed_dim + class_embed_dim)
-        # qk = self.to_qk(x[:, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch * num_patch, inner_dim))
-        # v = self.to_v(x) # (batch * num_patch , inner_dim + class_embed_dim)
-        # q, k = qk
-        # print('q.shape: ', q.shape, 'q: ', q)
-        # print('k.shape: ', k.shape, 'k: ', k)
+        qk = self.to_qk(x[:, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch * num_patch, inner_dim))
+        v = self.to_v(x) # (batch * num_patch , inner_dim + class_embed_dim)
 
-        # q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
+        q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
         # v = rearrange(v, 'B (h d) -> h B d', h=self.heads) #  (num_head, batch * num_patch, head_dim)
-        # dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (batch * num_patch, batch * num_patch)
-        # print('dots.dtype:', dots.dtype)
-        # print('dots.shape:', dots.shape)
-        # print('dots: ', dots[:3, :])
-        q = torch.unsqueeze(x[:, :-self.class_embed_dim], 1)  # N*1*d
-        k = torch.unsqueeze(x[:, :-self.class_embed_dim], 0)  # 1*N*d
-        dots = ((q - k) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (num_head, batch * num_patch, batch * num_patch)
+        # q = torch.unsqueeze(q, 1)  # N*1*d
+        # k = torch.unsqueeze(k, 0)  # 1*N*d
+        # dots = ((q - k) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
         attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch * num_patch, batch * num_patch)
         print('attn.shape:', attn.shape, 'attn: ', attn)
 
+        # print('cls_token', rearrange(cls_token, '(b n) d -> b n d', b = batch, n = num_patch).mean(1))
         out = torch.matmul(attn, v)
 
         out = rearrange(out, '(b n) d -> b n d', b = batch, n = num_patch) # (batch, num_patch, inner_dim)
