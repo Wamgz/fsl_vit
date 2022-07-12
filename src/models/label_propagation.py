@@ -306,7 +306,6 @@ class ViT(nn.Module):
 
         y_hat = torch.argmax(logits[self.num_support * self.cls_per_episode:, :], 1)
         acc_val = y_hat.eq(labels[self.num_support * self.cls_per_episode:]).float().mean()
-        print('labels: ', labels)
         return loss, acc_val
 
 
