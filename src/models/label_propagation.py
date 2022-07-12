@@ -47,7 +47,7 @@ class FeedForward(nn.Module):
         x = rearrange(x, 'b n e -> b e n')
         x = self.bn(x)
         x = rearrange(x, 'b e n -> b n e')
-        x = self.ln(x)
+        # x = self.ln(x)
         x = self.gelu(x)
         x = self.dropout1(x)
         x = self.fc2(x)
