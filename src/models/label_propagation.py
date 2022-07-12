@@ -69,6 +69,7 @@ class Attention(nn.Module):
 
         self.num_patch = num_patch
         self.attend = nn.Softmax(dim=-1)
+
         self.dropout = nn.Dropout(dropout)
 
         self.to_qk = nn.Linear(embed_dim, inner_dim * 2, bias=False)
@@ -109,7 +110,10 @@ class Attention(nn.Module):
         # q = torch.unsqueeze(q, 1)  # N*1*d
         # k = torch.unsqueeze(k, 0)  # 1*N*d
         # dots = ((q - k) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
-        attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch * num_patch, batch * num_patch)
+        # attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch * num_patch, batch * num_patch)
+        val_max, _ = torch.max(dots, dim=-1)
+        val_min, _ = torch.min(dots, dim=-1)
+        attn = (dots - val_min) / (val_max)
         print('attn.shape:', attn.shape, 'attn: ', attn)
 
         # print('cls_token', rearrange(cls_token, '(b n) d -> b n d', b = batch, n = num_patch).mean(1))
