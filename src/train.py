@@ -14,6 +14,7 @@ import torch
 from src.utils.logger_utils import logger
 
 from src.models.label_propagation import ViT
+from src.models.tpn import LabelPropagation
 from data_loaders.data_fetchers import DataFetcher
 from src.data_loaders.prototypical_batch_sampler import PrototypicalBatchSampler
 from torch.utils.tensorboard import SummaryWriter
@@ -101,7 +102,7 @@ def init_model(opt):
             use_linear_v=opt.use_linear_v
         ).cuda()
     else:
-        return
+        return LabelPropagation()
 
 
 def init_optim(opt, model, mlp=None):
