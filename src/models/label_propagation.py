@@ -115,7 +115,6 @@ class Attention(nn.Module):
         val_max, _ = torch.max(dots, dim=-1)
         val_min, _ = torch.min(dots, dim=-1)
         attn = (dots - val_min) / (val_max - val_min)
-        print('attn', attn)
         # print('cls_token', rearrange(cls_token, '(b n) d -> b n d', b = batch, n = num_patch).mean(1))
         out = torch.matmul(attn, v)
 
