@@ -232,6 +232,9 @@ class LabelPropagation(nn.Module):
         return loss, acc
 
 
+    def trainable_params(self):
+        return self.parameters()
+
     def _map2ZeroStart(self, labels):
         labels_unique, _ = torch.sort(torch.unique(labels))
         labels_index = torch.zeros(100)
