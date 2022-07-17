@@ -87,7 +87,8 @@ class Attention(nn.Module):
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=1.0)
+            nn.init.kaiming_normal_(m.weight)
+
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
@@ -114,7 +115,7 @@ class Attention(nn.Module):
         val_max, _ = torch.max(dots, dim=-1)
         val_min, _ = torch.min(dots, dim=-1)
         attn = (dots - val_min) / (val_max - val_min)
-
+        print('attn', attn)
         # print('cls_token', rearrange(cls_token, '(b n) d -> b n d', b = batch, n = num_patch).mean(1))
         out = torch.matmul(attn, v)
 
@@ -327,7 +328,7 @@ class ViT(nn.Module):
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
+            nn.init.kaiming_normal_(m.weight)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
