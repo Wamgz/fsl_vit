@@ -102,7 +102,7 @@ def init_model(opt):
             use_linear_v=opt.use_linear_v
         ).cuda()
     else:
-        return LabelPropagation()
+        return LabelPropagation().cuda()
 
 
 def init_optim(opt, model, mlp=None):
