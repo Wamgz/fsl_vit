@@ -166,7 +166,7 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
     env = Visdom(env=opt.model_name + '-' + opt.dataset_name)
     train_loss_pane, train_xentropy_pane, train_acc_pane = new_pane(env, 'train_loss' + '_' + str(now)), new_pane(env, 'train_xentropy' + '_' + str(now)), new_pane(env, 'train_acc' + '_' + str(now))
     val_loss_pane, val_xentropy_pane, val_acc_pane = new_pane(env, 'val-loss'  + '_' + str(now)), new_pane(env, 'val_xentropy' + '_' + str(now)), new_pane(env, 'val_acc' + '_' + str(now))
-
+    print(opt)
     for epoch in range(opt.epochs):
         logger.info('=== Epoch: {}, Learning Rate : {} === '.format(epoch, optim.state_dict()['param_groups'][0]['lr']))
         tr_iter = iter(tr_dataloader)
