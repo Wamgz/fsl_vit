@@ -7,6 +7,7 @@ import timm
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from src.utils.logger_utils import logger
 import torch.nn.functional as F
+import numpy as np
 
 torch.set_printoptions(precision=None, threshold=999999, edgeitems=None, linewidth=None, profile=None)
 
@@ -68,8 +69,8 @@ class Attention(nn.Module):
         self.scale = 1
 
         self.num_patch = num_patch
-        self.attend = nn.Softmax(dim=-1)
-
+        # self.attend = nn.Softmax(dim=-1)
+        self.attend = nn.Identity()
         self.dropout = nn.Dropout(dropout)
 
         self.to_qk = nn.Linear(embed_dim, inner_dim * 2, bias=False)
@@ -78,6 +79,7 @@ class Attention(nn.Module):
             self.to_v = nn.Linear(embed_dim + class_embed_dim, inner_dim + class_embed_dim, bias=False) # TODO 是否需要linear
         else:
             self.to_v = nn.Identity()
+        self.alpha = torch.tensor(0.99, requires_grad=True)
 
 
         self.to_out = nn.Sequential(
@@ -97,6 +99,8 @@ class Attention(nn.Module):
 
     ## TODO 尝试batch * num_patch做为一个大batch
     def forward(self, x):
+        eps = torch.tensor(np.finfo(float).eps).cuda()
+
         # x: (batch, num_patch, embed_dim + class_embed_dim) -> (batch * num_patch, embed_dim + class_embed_dim)
         # q, k -> x[:, :, :embed_dim]
         batch, num_patch, dim = x.shape
@@ -107,14 +111,32 @@ class Attention(nn.Module):
         # q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
         # v = rearrange(v, 'B (h d) -> h B d', h=self.heads) #  (num_head, batch * num_patch, head_dim)
         ## TODO 对dots是否加个bn
-        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (num_head, batch * num_patch, batch * num_patch)
-        # q = torch.unsqueeze(q, 1)  # N*1*d
-        # k = torch.unsqueeze(k, 0)  # 1*N*d
-        # dots = ((q - k) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
-        # attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch * num_patch, batch * num_patch)
-        val_max, _ = torch.max(dots, dim=-1)
-        val_min, _ = torch.min(dots, dim=-1)
-        attn = (dots - val_min) / (val_max - val_min)
+        # dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (num_head, batch * num_patch, batch * num_patch)
+        q = torch.unsqueeze(q, 1)  # N*1*d
+        k = torch.unsqueeze(k, 0)  # 1*N*d
+        dots = ((q - k) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
+        attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch * num_patch, batch * num_patch)
+        # val_max, _ = torch.max(dots, dim=-1)
+        # val_min, _ = torch.min(dots, dim=-1)
+        # attn = (dots - val_min) / (val_max - val_min)
+        topk, indices = torch.topk(attn, 64)  # topk: (100, 20), indices: (100, 20)
+        mask = torch.zeros_like(attn)
+        mask = mask.scatter(1, indices, 1)  # (100, 100)
+        mask = ((mask + torch.t(mask)) > 0).type(torch.float32)  # torch.t() 期望 input 为<= 2-D张量并转置尺寸0和1。   # union, kNN graph
+        # mask = ((mask>0)&(torch.t(mask)>0)).type(torch.float32)  # intersection, kNN graph
+        attn = attn * mask  # 构建无向图，上面的mask是为了保证把wij和wji都保留下来
+        ## normalize
+        N = attn.size(0)
+        D       = attn.sum(0) # (100, )
+        D_sqrt_inv = torch.sqrt(1.0/(D+eps)) # (100, )
+        D1      = torch.unsqueeze(D_sqrt_inv,1).repeat(1,N) # (100, 100)
+        D2      = torch.unsqueeze(D_sqrt_inv,0).repeat(N,1) # (100, 100)
+        attn       = D1*attn*D2
+        eye = torch.eye(N)
+        if torch.cuda.is_available():
+            eye = eye.cuda()
+        attn = torch.inverse(eye - self.alpha * attn + eps)
+
         # print('cls_token', rearrange(cls_token, '(b n) d -> b n d', b = batch, n = num_patch).mean(1))
         out = torch.matmul(attn, v)
 
