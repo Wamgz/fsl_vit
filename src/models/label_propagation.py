@@ -23,6 +23,7 @@ def pair(t):
 
 # classes
 
+
 class PreNorm(nn.Module):
     def __init__(self, dim, fn):
         super().__init__()
@@ -30,123 +31,127 @@ class PreNorm(nn.Module):
         self.fn = fn
 
     def forward(self, x, **kwargs):
-        return self.fn(x, **kwargs)
+        x = rearrange(x, 'b n e -> b e n')
+        return self.fn(rearrange(self.norm(x), 'b e n -> b n e'), **kwargs) # x: (600, 65, 1024)
+
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, class_dim=5, dropout=0.):
+    def __init__(self, dim, hidden_dim, dropout=0.):
         super().__init__()
-        self.dim = dim
-        self.cls_embeddim = class_dim
-        self.fc1 = nn.Linear(dim, hidden_dim)
-        self.gelu = nn.GELU()
-        self.dropout1 = nn.Dropout(dropout)
-        self.fc2 = nn.Linear(hidden_dim, dim)
-        self.dropout2 = nn.Dropout(dropout)
-        self.bn = nn.BatchNorm1d(self.dim)
+        self.net = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            Rearrange('b n e -> b e n'),
+            nn.BatchNorm1d(dim),
+            Rearrange('b n e -> b e n'),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim),
+            nn.Dropout(dropout)
+        )
 
     def forward(self, x):
-        cls_token = x[:, :, -self.cls_embeddim:]
-
-        x = self.fc1(x[:, :, :-self.cls_embeddim])
-        x = rearrange(x, 'b n e -> b e n')
-        x = self.bn(x)
-        x = rearrange(x, 'b e n -> b n e')
-        x = self.gelu(x)
-        x = self.dropout1(x)
-        x = self.fc2(x)
-        x = self.dropout2(x)
-        x = torch.cat((x, cls_token), dim=-1)
-        return x
+        return self.net(x)
 
 
+# class Attention(nn.Module):
+#     def __init__(self, embed_dim, class_embed_dim, num_patch, heads=8, dim_head=64, dropout=0., use_linear_v=False):
+#         super().__init__()
+#         inner_dim = dim_head * heads # 1024
+#         project_out = True
+#         self.embed_dim = embed_dim
+#         self.class_embed_dim = class_embed_dim
+#         self.heads = heads
+#         # self.scale = dim_head ** -0.5
+#         self.scale = 1
+#
+#         self.num_patch = num_patch
+#         # self.attend = nn.Softmax(dim=-1)
+#         self.attend = nn.Identity()
+#         self.dropout = nn.Dropout(dropout)
+#
+#         self.to_q = nn.Linear(embed_dim, inner_dim, bias=False)
+#         self.to_k = nn.Linear(embed_dim, inner_dim, bias=False)
+#
+#         self.apply(self._init_weights)
+#         if use_linear_v:
+#             self.to_v = nn.Linear(embed_dim + class_embed_dim, inner_dim + class_embed_dim, bias=False) # TODO 是否需要linear
+#         else:
+#             self.to_v = nn.Identity()
+#         self.alpha = torch.tensor(0.99, requires_grad=True)
+#
+#
+#         self.to_out = nn.Sequential(
+#             nn.Linear(inner_dim + class_embed_dim, embed_dim + class_embed_dim),
+#             nn.Dropout(dropout)
+#         ) if project_out else nn.Identity()
+#
+#     def _init_weights(self, m):
+#         if isinstance(m, nn.Linear):
+#             nn.init.kaiming_normal_(m.weight)
+#
+#             if isinstance(m, nn.Linear) and m.bias is not None:
+#                 nn.init.constant_(m.bias, 0)
+#         elif isinstance(m, nn.LayerNorm):
+#             nn.init.constant_(m.bias, 0)
+#             nn.init.constant_(m.weight, 1.0)
+#
+#     def forward(self, x):
+#         eps = torch.tensor(np.finfo(float).eps)
+#         if torch.cuda.is_available():
+#             eps = eps.cuda()
+#         # x: (batch, num_patch, embed_dim + class_embed_dim) -> (batch * num_patch, embed_dim + class_embed_dim)
+#         # q, k -> x[:, :, :embed_dim]
+#         batch, num_patch, dim = x.shape
+#         x = rearrange(x, 'b n d -> (b n) d') # (batch * num_patch, embed_dim + class_embed_dim)
+#         q, k = self.to_q(x[:, :]), self.to_k(x[:, :]) # tuple: ((batch * num_patch, inner_dim))
+#         v = self.to_v(x) # (batch * num_patch , inner_dim + class_embed_dim)
+#         # q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
+#         # v = rearrange(v, 'B (h d) -> h B d', h=self.heads) #  (num_head, batch * num_patch, head_dim)
+#         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (num_head, batch * num_patch, batch * num_patch)
+#         # q = torch.unsqueeze(q, 1)  # N*1*d
+#         # k = torch.unsqueeze(k, 0)  # 1*N*d
+#         # dots = ((q - k) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
+#         # attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch * num_patch, batch * num_patch)
+#         val_max, _ = torch.max(dots, dim=-1)
+#         val_min, _ = torch.min(dots, dim=-1)
+#         attn = (dots - val_min) / (val_max - val_min)
+#
+#         # print('cls_token', rearrange(cls_token, '(b n) d -> b n d', b = batch, n = num_patch).mean(1))
+#         out = torch.matmul(attn, v)
+#
+#         out = rearrange(out, '(b n) d -> b n d', b = batch, n = num_patch) # (batch, num_patch, inner_dim)
+#
+#         return self.to_out(out)
 class Attention(nn.Module):
-    def __init__(self, embed_dim, class_embed_dim, num_patch, heads=8, dim_head=64, dropout=0., use_linear_v=False):
+    def __init__(self, embed_dim, num_patch, class_embed_dim=5, use_linear_v=False,heads=8, dim_head=64, dropout=0.):
         super().__init__()
-        inner_dim = dim_head * heads # 1024
-        project_out = False
-        self.embed_dim = embed_dim
-        self.class_embed_dim = class_embed_dim
-        self.heads = heads
-        # self.scale = dim_head ** -0.5
-        self.scale = 1
+        inner_dim = dim_head * heads # 1024  TODO，innerdim和dim有什么区别
+        project_out = not (heads == 1 and dim_head == embed_dim)
 
-        self.num_patch = num_patch
-        # self.attend = nn.Softmax(dim=-1)
-        self.attend = nn.Identity()
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.attend = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(dropout)
 
-        self.to_q = nn.Linear(embed_dim, inner_dim, bias=False)
-        self.to_k = nn.Linear(embed_dim, inner_dim, bias=False)
-
-        self.apply(self._init_weights)
-        if use_linear_v:
-            self.to_v = nn.Linear(embed_dim + class_embed_dim, inner_dim + class_embed_dim, bias=False) # TODO 是否需要linear
-        else:
-            self.to_v = nn.Identity()
-        self.alpha = torch.tensor(0.99, requires_grad=True)
-
+        self.to_qkv = nn.Linear(embed_dim, inner_dim * 3, bias=False)
 
         self.to_out = nn.Sequential(
-            nn.Linear(inner_dim + class_embed_dim, embed_dim + class_embed_dim),
+            nn.Linear(inner_dim, embed_dim),
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
 
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            nn.init.kaiming_normal_(m.weight)
-
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-
     def forward(self, x):
-        eps = torch.tensor(np.finfo(float).eps)
-        if torch.cuda.is_available():
-            eps = eps.cuda()
+        qkv = self.to_qkv(x).chunk(3, dim=-1) # tuple: ((600, 65, 1024), (600, 65, 1024), (600, 65, 1024))
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), qkv) # (batch, num_head, num_patch, head_dim) -> (600, 16, 65, inner_dim / head)
 
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (batch, num_head, num_patch * num_patch, num_patch * num_patch)
 
-        # x: (batch, num_patch, embed_dim + class_embed_dim) -> (batch * num_patch, embed_dim + class_embed_dim)
-        # q, k -> x[:, :, :embed_dim]
-        batch, num_patch, dim = x.shape
-        x = rearrange(x, 'b n d -> (b n) d') # (batch * num_patch, embed_dim + class_embed_dim)
-        q, k = self.to_q(x[:, :-self.class_embed_dim]), self.to_k(x[:, :-self.class_embed_dim]) # tuple: ((batch * num_patch, inner_dim))
-        v = self.to_v(x) # (batch * num_patch , inner_dim + class_embed_dim)
-        # q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
-        # v = rearrange(v, 'B (h d) -> h B d', h=self.heads) #  (num_head, batch * num_patch, head_dim)
-        # dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (num_head, batch * num_patch, batch * num_patch)
-        q = torch.unsqueeze(q, 1)  # N*1*d
-        k = torch.unsqueeze(k, 0)  # 1*N*d
-        dots = ((q - k) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
-        attn = self.attend(dots) # q和k的相似度矩阵, attn: (batch * num_patch, batch * num_patch)
-        # val_max, _ = torch.max(dots, dim=-1)
-        # val_min, _ = torch.min(dots, dim=-1)
-        # attn = (dots - val_min) / (val_max - val_min)
-        topk, indices = torch.topk(attn, 64)  # topk: (100, 20), indices: (100, 20)
-        mask = torch.zeros_like(attn)
-        if torch.cuda.is_available():
-            mask = mask.cuda()
-        mask = mask.scatter(1, indices, 1)  # (100, 100)
-        mask = ((mask + torch.t(mask)) > 0).type(torch.float32)  # torch.t() 期望 input 为<= 2-D张量并转置尺寸0和1。   # union, kNN graph
-        # mask = ((mask>0)&(torch.t(mask)>0)).type(torch.float32)  # intersection, kNN graph
-        attn = attn * mask  # 构建无向图，上面的mask是为了保证把wij和wji都保留下来
-        ## normalize
-        N = attn.size(0)
-        # D = attn.sum(0) # (100, )
-        # D_sqrt_inv = torch.sqrt(1.0/(D+eps)) # (100, )
-        # D1 = torch.unsqueeze(D_sqrt_inv,1).repeat(1,N) # (100, 100)
-        # D2 = torch.unsqueeze(D_sqrt_inv,0).repeat(N,1) # (100, 100)
-        # attn = D1*attn*D2
-        eye = torch.eye(N)
-        if torch.cuda.is_available():
-            eye = eye.cuda()
-        attn = torch.inverse(eye - self.alpha * attn + eps)
+        attn = self.attend(dots) # q和k的相似度矩阵, attn: (600, 16, 65, 65)
+        attn = self.dropout(attn)
 
-        # print('cls_token', rearrange(cls_token, '(b n) d -> b n d', b = batch, n = num_patch).mean(1))
-        out = torch.matmul(attn, v)
-
-        out = rearrange(out, '(b n) d -> b n d', b = batch, n = num_patch) # (batch, num_patch, inner_dim)
+        out = torch.matmul(attn, v) # attn矩阵乘v不是点乘（对v加权），v的维度不变
+        out = rearrange(out, 'b h n d -> b n (h d)') # (batch, num_patch, num_head * head_dim(inner_dim))
 
         return self.to_out(out)
 
@@ -224,6 +229,42 @@ class Mlp(nn.Module):
         x = self.drop(x)
         return x
 
+
+class RelationNetwork(nn.Module):
+    """Graph Construction Module"""
+
+    def __init__(self):
+        super(RelationNetwork, self).__init__()
+
+        self.layer1 = nn.Sequential(
+            nn.Conv2d(1, 8, kernel_size=3, padding=1),
+            nn.BatchNorm2d(8),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, padding=1))
+        self.layer2 = nn.Sequential(
+            nn.Conv2d(8, 1, kernel_size=3, padding=1),
+            nn.BatchNorm2d(1),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, padding=1))
+
+        self.fc3 = nn.Linear(9, 16)
+        self.fc4 = nn.Linear(16, 1)
+
+    def forward(self, x):
+        x = x.view(-1, 1, 8, 8)  # (100, 64, 5, 5)
+
+        out = self.layer1(x)
+        out = self.layer2(out)
+        # flatten
+        out = out.view(out.size(0), -1)
+        out = F.relu(self.fc3(out))
+        out = self.fc4(out)  # no relu
+
+        out = out.view(out.size(0), -1)  # bs*1
+
+        return out
+
+
 class ViT(nn.Module):
     def __init__(self, *, image_size, patch_size, out_dim, embed_dim, depth, heads, mlp_dim, class_embed_dim=5, total_class=100, cls_per_episode=5,
                  support_num=5, query_num=15, pool='cls', channels=1, dim_head=12, tsfm_dropout=0., emb_dropout=0., feature_only=False, pretrained=False, patch_norm=True, conv_patch_embedding=False,
@@ -279,8 +320,8 @@ class ViT(nn.Module):
         self.avg_pool = nn.AdaptiveAvgPool1d(1)
 
         self.out_head = nn.Sequential(
-            nn.LayerNorm((self.num_patch + 1) * embed_dim),
-            nn.Linear((self.num_patch + 1) * embed_dim, out_dim)
+            nn.LayerNorm(embed_dim),
+            nn.Linear(embed_dim, (self.num_support + self.num_query) * self.cls_per_episode)
         )
 
         self.softmax = nn.Softmax(dim=-1)
@@ -290,7 +331,10 @@ class ViT(nn.Module):
         self.total_class = total_class
         self.use_dual_feature = use_dual_feature
         self.avg_pool_64 = nn.AdaptiveAvgPool1d(64)
-    def forward(self, imgs, labels):
+        self.alpha = torch.tensor(0.99)
+        self.relation = RelationNetwork()
+
+    def forward(self, imgs, labels=None):
         '''
         :param imgs: (batch, C, H, W) -> (100, 3, 96, 96)
         :param labels: (batch, ) -> (100, )
@@ -302,31 +346,20 @@ class ViT(nn.Module):
         batch, num_patch, _ = x.shape
         x += self.pos_embedding[:, :num_patch] # (batch, num_patch, embed_dim)
 
-        labels = self._map2ZeroStart(labels)
-        labels_unique, _ = torch.sort(torch.unique(labels))
-
-        ## 拆分support和query，加上对应的class_embedding
-        support_idxs, query_idxs = self._support_query_data(labels)
-        zeros = torch.zeros(query_idxs.size(0), num_patch, self.cls_per_episode)
-        if torch.cuda.is_available():
-            zeros = zeros.cuda()
-        support_cls_token, query_cls_token = torch.nn.functional.one_hot(labels[support_idxs], self.cls_per_episode), zeros # (num_support, class_per_episode)
-        if torch.cuda.is_available():
-            query_cls_token = query_cls_token.cuda()
-        support_cls_tokens, query_cls_tokens = \
-            support_cls_token.unsqueeze(1).repeat(1, self.num_patch, 1), query_cls_token # (num_support, num_patch, class_embed_dim)
-        # support_x1, query_x1 = x[support_idxs], x[query_idxs]
-        support_x, query_x = torch.cat((x[support_idxs], support_cls_tokens), dim=-1), torch.cat((x[query_idxs], query_cls_tokens), dim=-1) # patch维度拼接, (num_support, num_patch, embed_dim + embed_dim), (num_query, num_patch, embed_dim + embed_dim)
-        x, labels = torch.cat((support_x, query_x), dim=0), torch.cat((labels[support_idxs], labels[query_idxs]))
-        # print('init cls_token: ', x[:, :, -self.cls_per_episode:])
+        # labels = self._map2ZeroStart(labels)
+        # labels_unique, _ = torch.sort(torch.unique(labels))
+        #
+        # ## 拆分support和query，加上对应的class_embedding
+        # support_idxs, query_idxs = self._support_query_data(labels)
+        # x, labels = torch.cat((x[support_idxs], x[query_idxs]), dim=0), torch.cat((labels[support_idxs], labels[query_idxs]))
         ## transformer
         x = self.dropout(x)
         x = self.transformer(x) # (batch, num_patch, embedding_dim + class_embed_dim)
 
-        ## 取出class_embed进行loss计算，(support和query）都计算
-        logits = x[:, :, -self.class_embed_dim:] # (batch, num_patch, class_embed_dim)
-
-        # x_entropy = nn.CrossEntropyLoss()
+        x = self.norm(x)  # (batch, num_patch + 1, embedding_dim)
+        x = self.avg_pool(x.transpose(1, 2))  # B C 1
+        x = torch.flatten(x, 1)
+        return x
         # if torch.cuda.is_available():
         #     x_entropy = x_entropy.cuda()
         # labels_patch = labels.unsqueeze(1).repeat(1, self.num_patch).flatten(0)
@@ -337,7 +370,6 @@ class ViT(nn.Module):
         #
         # y_hat = mode[self.num_support * self.cls_per_episode:]
         # acc_val = y_hat.eq(labels[self.num_support * self.cls_per_episode:]).float().mean()
-        return loss, acc_val
 
 
     def _support_query_data(self, labels):
@@ -379,10 +411,16 @@ def get_parameter_number(model):
     print('参数量: %d\n模型大小: %.4fM' % (total_num, size))
     return {'Total': total_num, 'Trainable': trainable_num}
 
-if __name__ == '__main__':
-    model = ViT(
+class LabelPropagation(nn.Module):
+    """Label Propagation"""
+
+    def __init__(self):
+        super(LabelPropagation, self).__init__()
+        self.im_width, self.im_height, self.channels = (84, 84, 3)
+
+        self.encoder = ViT(
             image_size=96,
-            patch_size=32,
+            patch_size=8,
             out_dim=64,
             embed_dim=64,
             depth=4,
@@ -392,8 +430,124 @@ if __name__ == '__main__':
             tsfm_dropout=0.0,
             emb_dropout=0.0,
             use_avg_pool_out=True,
+            class_embed_dim = 0,
             channels=3
         )
+        self.relation = RelationNetwork()
+        self.rn = 30
+        self.k = 20
+        self.alpha = torch.tensor(0.99, requires_grad=True)
+
+        self.cls_per_episode = 5
+        self.num_support = 5
+        self.num_query = 15
+    def forward(self, imgs, labels):
+        """
+            inputs are preprocessed
+            support:    (N_way*N_shot)x3x84x84
+            query:      (N_way*N_query)x3x84x84
+            s_labels:   (N_way*N_shot)xN_way, one-hot
+            q_labels:   (N_way*N_query)xN_way, one-hot
+        """
+        # init
+        eps = np.finfo(float).eps
+        labels = self._map2ZeroStart(labels)
+        labels_unique, _ = torch.sort(torch.unique(labels))
+
+        ## 拆分support和query，加上对应的class_embedding
+        support_idxs, query_idxs = self._support_query_data(labels)
+
+        [support, s_labels, query, q_labels] = imgs[support_idxs], labels[support_idxs], imgs[query_idxs], labels[query_idxs]
+        s_labels, q_labels = torch.nn.functional.one_hot(s_labels, self.cls_per_episode), torch.nn.functional.one_hot(q_labels, self.cls_per_episode)
+        num_classes = s_labels.shape[1]
+        num_support = int(s_labels.shape[0] / num_classes)
+        num_queries = int(query.shape[0] / num_classes)
+
+        # Step1: Embedding
+        inp = torch.cat((support, query), 0)  # (100, 3, 84, 84) 将suport和query set concat在一块
+        emb_all = self.encoder(inp).view(-1, 64)  # (100, 1600) 合并在一起提取特征
+        N, d = emb_all.shape[0], emb_all.shape[1]
+
+        # Step2: Graph Construction
+        ## sigmma
+        self.sigma = self.relation(emb_all)
+
+        ## W
+        emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
+        emb1 = torch.unsqueeze(emb_all, 1)  # N*1*d
+        emb2 = torch.unsqueeze(emb_all, 0)  # 1*N*d
+        W = ((emb1 - emb2) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
+        W = torch.exp(-W / 2)
+
+        ## keep top-k values
+        topk, indices = torch.topk(W, self.k)  # topk: (100, 20), indices: (100, 20)
+        mask = torch.zeros_like(W)
+        mask = mask.scatter(1, indices, 1)  # (100, 100)
+        mask = ((mask + torch.t(mask)) > 0).type(
+            torch.float32)  # torch.t() 期望 input 为<= 2-D张量并转置尺寸0和1。   # union, kNN graph
+        # mask = ((mask>0)&(torch.t(mask)>0)).type(torch.float32)  # intersection, kNN graph
+        W = W * mask  # 构建无向图，上面的mask是为了保证把wij和wji都保留下来
+
+        ## normalize
+        D = W.sum(0)  # (100, )
+        D_sqrt_inv = torch.sqrt(1.0 / (D + eps))  # (100, )
+        D1 = torch.unsqueeze(D_sqrt_inv, 1).repeat(1, N)  # (100, 100)
+        D2 = torch.unsqueeze(D_sqrt_inv, 0).repeat(N, 1)  # (100, 100)
+        S = D1 * W * D2
+
+        # Step3: Label Propagation, F = (I-\alpha S)^{-1}Y
+        ys = s_labels  # (25, 5)
+        yu = torch.zeros(num_classes * num_queries, num_classes)  # (75, 5)
+        if torch.cuda.is_available():
+            yu = yu.cuda()
+        # yu = (torch.ones(num_classes*num_queries, num_classes)/num_classes).to(device)
+        y = torch.cat((ys, yu), 0)  # (100, 5)用supoort set的label去预测query的label
+        eye = torch.eye(N)
+        if torch.cuda.is_available():
+            eye = eye.cuda()
+        s = torch.inverse(eye - self.alpha * S + eps)
+        F = torch.matmul(s, y)  # (100, 5)
+        Fq = F[num_classes * num_support:, :]  # query predictions，loss计算support和query set一起算，acc计算只计算query
+
+        # Step4: Cross-Entropy Loss
+        ce = nn.CrossEntropyLoss()
+        if torch.cuda.is_available():
+            ce = ce.cuda();
+        ## both support and query loss
+        gt = torch.argmax(torch.cat((s_labels, q_labels), 0), 1)
+        loss = ce(F, gt)
+        ## acc
+        predq = torch.argmax(Fq, 1)
+        gtq = torch.argmax(q_labels, 1)
+        correct = (predq == gtq).sum()
+        total = num_queries * num_classes
+        acc = 1.0 * correct.float() / float(total)
+
+        return loss, acc
+
+
+    def trainable_params(self):
+        return self.parameters()
+
+    def _map2ZeroStart(self, labels):
+        labels_unique, _ = torch.sort(torch.unique(labels))
+        labels_index = torch.zeros(100)
+        for idx, label in enumerate(labels_unique):
+            labels_index[label] = idx
+        for i in range(labels.size(0)):
+            labels[i] = labels_index[labels[i]]
+        return labels
+
+    def _support_query_data(self, labels):
+        labels_unique, _ = torch.sort(torch.unique(labels))
+        support_idxs = torch.stack(list(map(lambda c: labels.eq(c).nonzero()[:self.num_support], labels_unique))).view(
+            -1)  # (class_per_episode * num_support)
+        query_idxs = torch.stack(list(map(lambda c: labels.eq(c).nonzero()[self.num_support:], labels_unique))).view(
+            -1)  # (class_per_episode * num_query)
+        return support_idxs, query_idxs
+
+if __name__ == '__main__':
+    model = LabelPropagation()
     # region
     def init_dataset(opt, mode):
         dataset = MiniImageNet(mode=mode, opt=options)
@@ -438,10 +592,16 @@ if __name__ == '__main__':
     tr_iter.__next__()
     optim = torch.optim.Adam(model.trainable_params(), lr=0.001)
     model.train()
-    for batch in tr_iter:
+    train_loss = []
+    train_acc = []
+    for idx, batch in enumerate(tr_iter):
         optim.zero_grad()
         x, y = batch  # x: (batch, C, H, W), y:(batch, )
         loss, acc = model(x, y)
         loss.backward()
         optim.step()
-        print(loss, acc)
+        print(idx, loss, acc)
+        train_loss.append(loss.detach())
+        train_acc.append(acc.detach())
+    train_avg_loss = torch.tensor(train_loss[:]).mean()
+    train_avg_acc = torch.tensor(train_acc[:]).mean()
