@@ -173,7 +173,7 @@ class LabelPropagation(nn.Module):
         eye = torch.eye(N)
         if torch.cuda.is_available():
             eye = eye.cuda()
-        s = torch.inverse(torch.eye(N) - self.alpha * S + eps)
+        s = torch.inverse(eye - self.alpha * S + eps)
         F = torch.matmul(s, y)  # (100, 5)
         Fq = F[num_classes * num_support:, :]  # query predictions，loss计算support和query set一起算，acc计算只计算query
 
