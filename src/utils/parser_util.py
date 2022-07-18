@@ -21,12 +21,12 @@ def get_parser():
     parser.add_argument('-height', '--height',
                         type=int,
                         help='image resized height',
-                        default=64)
+                        default=96)
 
     parser.add_argument('-width', '--width',
                         type=int,
                         help='image resized width',
-                        default=64)
+                        default=96)
 
     parser.add_argument('-channel', '--channel',
                         type=int,
@@ -76,7 +76,7 @@ def get_parser():
     parser.add_argument('-its', '--iterations',
                         type=int,
                         help='number of episodes per epoch, default=100',
-                        default=100)
+                        default=1000)
 
     parser.add_argument('-use_aux_loss', '--use_aux_loss',
                         type=bool,
@@ -91,7 +91,7 @@ def get_parser():
     parser.add_argument('-cTr', '--classes_per_it_tr',
                         type=int,
                         help='number of random classes per episode for training, default=60',
-                        default=20)
+                        default=5)
 
     parser.add_argument('-nsTr', '--num_support_tr',
                         type=int,
@@ -106,7 +106,7 @@ def get_parser():
     parser.add_argument('-cVa', '--classes_per_it_val',
                         type=int,
                         help='number of random classes per episode for validation, default=5',
-                        default=16)
+                        default=5)
 
     parser.add_argument('-nsVa', '--num_support_val',
                         type=int,

@@ -5,10 +5,14 @@ from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 import timm
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
+
+from src.data_loaders.prototypical_batch_sampler import PrototypicalBatchSampler
 from src.utils.logger_utils import logger
 import torch.nn.functional as F
 import numpy as np
-
+from src.utils.parser_util import get_parser
+from src.datasets.miniimagenet import MiniImageNet
+import tqdm
 torch.set_printoptions(precision=None, threshold=999999, edgeitems=None, linewidth=None, profile=None)
 
 
@@ -26,8 +30,7 @@ class PreNorm(nn.Module):
         self.fn = fn
 
     def forward(self, x, **kwargs):
-        x = rearrange(x, 'b n e -> b e n')
-        return self.fn(rearrange(self.norm(x), 'b e n -> b n e'), **kwargs)
+        return self.fn(x, **kwargs)
 
 class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim, class_dim=5, dropout=0.):
@@ -48,7 +51,6 @@ class FeedForward(nn.Module):
         x = rearrange(x, 'b n e -> b e n')
         x = self.bn(x)
         x = rearrange(x, 'b e n -> b n e')
-        # x = self.ln(x)
         x = self.gelu(x)
         x = self.dropout1(x)
         x = self.fc2(x)
@@ -73,7 +75,9 @@ class Attention(nn.Module):
         self.attend = nn.Identity()
         self.dropout = nn.Dropout(dropout)
 
-        self.to_qk = nn.Linear(embed_dim, inner_dim * 2, bias=False)
+        self.to_q = nn.Linear(embed_dim, inner_dim, bias=False)
+        self.to_k = nn.Linear(embed_dim, inner_dim, bias=False)
+
         self.apply(self._init_weights)
         if use_linear_v:
             self.to_v = nn.Linear(embed_dim + class_embed_dim, inner_dim + class_embed_dim, bias=False) # TODO 是否需要linear
@@ -97,20 +101,20 @@ class Attention(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    ## TODO 尝试batch * num_patch做为一个大batch
     def forward(self, x):
-        eps = torch.tensor(np.finfo(float).eps).cuda()
+        eps = torch.tensor(np.finfo(float).eps)
+        if torch.cuda.is_available():
+            eps = eps.cuda()
+
 
         # x: (batch, num_patch, embed_dim + class_embed_dim) -> (batch * num_patch, embed_dim + class_embed_dim)
         # q, k -> x[:, :, :embed_dim]
         batch, num_patch, dim = x.shape
         x = rearrange(x, 'b n d -> (b n) d') # (batch * num_patch, embed_dim + class_embed_dim)
-        qk = self.to_qk(x[:, :-self.class_embed_dim]).chunk(2, dim=-1) # tuple: ((batch * num_patch, inner_dim))
+        q, k = self.to_q(x[:, :-self.class_embed_dim]), self.to_k(x[:, :-self.class_embed_dim]) # tuple: ((batch * num_patch, inner_dim))
         v = self.to_v(x) # (batch * num_patch , inner_dim + class_embed_dim)
-        q, k = qk
         # q, k = map(lambda t: rearrange(t, 'B (h d) -> h B d', h=self.heads), qk) # (num_head, batch * num_patch, head_dim)
         # v = rearrange(v, 'B (h d) -> h B d', h=self.heads) #  (num_head, batch * num_patch, head_dim)
-        ## TODO 对dots是否加个bn
         # dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (num_head, batch * num_patch, batch * num_patch)
         q = torch.unsqueeze(q, 1)  # N*1*d
         k = torch.unsqueeze(k, 0)  # 1*N*d
@@ -121,17 +125,19 @@ class Attention(nn.Module):
         # attn = (dots - val_min) / (val_max - val_min)
         topk, indices = torch.topk(attn, 64)  # topk: (100, 20), indices: (100, 20)
         mask = torch.zeros_like(attn)
+        if torch.cuda.is_available():
+            mask = mask.cuda()
         mask = mask.scatter(1, indices, 1)  # (100, 100)
         mask = ((mask + torch.t(mask)) > 0).type(torch.float32)  # torch.t() 期望 input 为<= 2-D张量并转置尺寸0和1。   # union, kNN graph
         # mask = ((mask>0)&(torch.t(mask)>0)).type(torch.float32)  # intersection, kNN graph
         attn = attn * mask  # 构建无向图，上面的mask是为了保证把wij和wji都保留下来
         ## normalize
         N = attn.size(0)
-        D       = attn.sum(0) # (100, )
-        D_sqrt_inv = torch.sqrt(1.0/(D+eps)) # (100, )
-        D1      = torch.unsqueeze(D_sqrt_inv,1).repeat(1,N) # (100, 100)
-        D2      = torch.unsqueeze(D_sqrt_inv,0).repeat(N,1) # (100, 100)
-        attn       = D1*attn*D2
+        # D = attn.sum(0) # (100, )
+        # D_sqrt_inv = torch.sqrt(1.0/(D+eps)) # (100, )
+        # D1 = torch.unsqueeze(D_sqrt_inv,1).repeat(1,N) # (100, 100)
+        # D2 = torch.unsqueeze(D_sqrt_inv,0).repeat(N,1) # (100, 100)
+        # attn = D1*attn*D2
         eye = torch.eye(N)
         if torch.cuda.is_available():
             eye = eye.cuda()
@@ -250,7 +256,7 @@ class ViT(nn.Module):
             )
 
         self.pos_embedding = nn.Parameter(torch.randn(1, self.num_patch, embed_dim))
-        trunc_normal_(self.pos_embedding, std=.02)
+        nn.init.kaiming_normal_(self.pos_embedding)
 
         self.class_embed_dim = self.cls_per_episode
 
@@ -292,11 +298,6 @@ class ViT(nn.Module):
         '''
         ## patch embedding
         x = self.to_patch_embedding(imgs) # (batch, num_patch, patch_size * patch_size) -> (100, 12 * 12, 64)
-        if self.use_dual_feature:
-            x_1 = self.to_patch_embedding(F.interpolate(imgs, [64, 64]))
-            x_2 = self.to_patch_embedding(F.interpolate(imgs, [32, 32]))
-            x = torch.cat((x, x_1, x_2), dim=1) # num_patch维度拼接
-            x = self.avg_pool_64(x.transpose(1, 2)).transpose(1, 2)
 
         batch, num_patch, _ = x.shape
         x += self.pos_embedding[:, :num_patch] # (batch, num_patch, embed_dim)
@@ -306,7 +307,10 @@ class ViT(nn.Module):
 
         ## 拆分support和query，加上对应的class_embedding
         support_idxs, query_idxs = self._support_query_data(labels)
-        support_cls_token, query_cls_token = torch.nn.functional.one_hot(labels[support_idxs], self.cls_per_episode), torch.zeros(query_idxs.size(0), num_patch, self.cls_per_episode) # (num_support, class_per_episode)
+        zeros = torch.zeros(query_idxs.size(0), num_patch, self.cls_per_episode)
+        if torch.cuda.is_available():
+            zeros = zeros.cuda()
+        support_cls_token, query_cls_token = torch.nn.functional.one_hot(labels[support_idxs], self.cls_per_episode), zeros # (num_support, class_per_episode)
         if torch.cuda.is_available():
             query_cls_token = query_cls_token.cuda()
         support_cls_tokens, query_cls_tokens = \
@@ -320,14 +324,19 @@ class ViT(nn.Module):
         x = self.transformer(x) # (batch, num_patch, embedding_dim + class_embed_dim)
 
         ## 取出class_embed进行loss计算，(support和query）都计算
-        logits = x[:, :, -self.class_embed_dim:].mean(2) # (batch, class_embed_dim)
-        x_entropy = nn.CrossEntropyLoss()
-        if torch.cuda.is_available():
-            x_entropy = x_entropy.cuda()
-        loss = x_entropy(logits, labels) # (batch, class_per_epi)
+        logits = x[:, :, -self.class_embed_dim:] # (batch, num_patch, class_embed_dim)
 
-        y_hat = torch.argmax(logits[self.num_support * self.cls_per_episode:, :], 1)
-        acc_val = y_hat.eq(labels[self.num_support * self.cls_per_episode:]).float().mean()
+        # x_entropy = nn.CrossEntropyLoss()
+        # if torch.cuda.is_available():
+        #     x_entropy = x_entropy.cuda()
+        # labels_patch = labels.unsqueeze(1).repeat(1, self.num_patch).flatten(0)
+        # loss = x_entropy(logits.view(-1, logits.size(-1)), labels_patch) # (batch, class_per_epi)
+        #
+        # _, max_indices = torch.max(logits, dim=-1)
+        # mode,_ = torch.mode(max_indices)
+        #
+        # y_hat = mode[self.num_support * self.cls_per_episode:]
+        # acc_val = y_hat.eq(labels[self.num_support * self.cls_per_episode:]).float().mean()
         return loss, acc_val
 
 
@@ -373,7 +382,7 @@ def get_parameter_number(model):
 if __name__ == '__main__':
     model = ViT(
             image_size=96,
-            patch_size=8,
+            patch_size=32,
             out_dim=64,
             embed_dim=64,
             depth=4,
@@ -385,15 +394,54 @@ if __name__ == '__main__':
             use_avg_pool_out=True,
             channels=3
         )
+    # region
+    def init_dataset(opt, mode):
+        dataset = MiniImageNet(mode=mode, opt=options)
+        _dataset_exception_handle(dataset=dataset, n_classes=len(np.unique(dataset.y)), mode=mode, opt=opt)
+        return dataset
+    def _dataset_exception_handle(dataset, n_classes, mode, opt):
+        n_classes = len(np.unique(dataset.y))
+        if mode == 'train' and n_classes < opt.classes_per_it_tr or mode == 'val' and n_classes < opt.classes_per_it_val:
+            raise (Exception('There are not enough classes in the data in order ' +
+                             'to satisfy the chosen classes_per_it. Decrease the ' +
+                             'classes_per_it_{tr/val} option and try again.'))
+    def init_sampler(opt, labels, mode, dataset_name='miniImagenet'):
+        num_support, num_query = 0, 0
+        if 'train' in mode:
+            classes_per_it = opt.classes_per_it_tr
+            num_support, num_query = opt.num_support_tr, opt.num_query_tr
+        else:
+            classes_per_it = opt.classes_per_it_val
+            num_support, num_query = opt.num_support_val, opt.num_query_val
 
-    support = torch.randn((25, 3, 96, 96))
-    query = torch.randn((75, 3, 96, 96))
-    imgs = torch.cat((support, query), 0)
-    support_labels = torch.arange(5).view(1, -1).repeat(5, 1).view(-1) + 2
-    query_labels = torch.arange(5).view(1, -1).repeat(15, 1).view(-1) + 2
-    support_labels, query_labels = support_labels[torch.randperm(25)], query_labels[torch.randperm(75)]
-    labels = torch.cat((support_labels, query_labels), 0)
-    out = model(imgs, labels)
+        return PrototypicalBatchSampler(labels=labels,
+                                        classes_per_it=classes_per_it,
+                                        num_support=num_support,
+                                        num_query=num_query,
+                                        iterations=opt.iterations)
+    def init_dataloader(opt, mode):
+        dataset = init_dataset(opt, mode)
+        sampler = init_sampler(opt, dataset.y, mode)
 
-    print(out)
-    # num_param = get_parameter_number(model)
+        dataloader_params = {
+            # 'pin_memory': True,
+            # 'num_workers': 8
+        }
+        dataloader = torch.utils.data.DataLoader(dataset, batch_sampler=sampler, **dataloader_params)
+        return dataset, dataloader
+    # endregion
+
+    options = get_parser().parse_args()
+    print('option', options)
+    tr_dataset, tr_dataloader = init_dataloader(options, 'train')
+    tr_iter = iter(tr_dataloader)
+    tr_iter.__next__()
+    optim = torch.optim.Adam(model.trainable_params(), lr=0.001)
+    model.train()
+    for batch in tr_iter:
+        optim.zero_grad()
+        x, y = batch  # x: (batch, C, H, W), y:(batch, )
+        loss, acc = model(x, y)
+        loss.backward()
+        optim.step()
+        print(loss, acc)
