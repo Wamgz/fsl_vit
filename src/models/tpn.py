@@ -105,7 +105,8 @@ class LabelPropagation(nn.Module):
         self.relation = RelationNetwork()
 
         self.alpha = torch.tensor(0.99)
-
+        self.num_support, self.num_query = 5, 15
+        self.cls_per_episode = 5
     def forward(self, imgs, labels):
         """
             inputs are preprocessed
