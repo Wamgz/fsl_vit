@@ -14,5 +14,5 @@ python ../train.py \
 --width 84 \
 --iterations 1000 \
 --learning_rate 0.001 \
---cuda 1 \
---comment "tpn"
+--cuda 0 \
+--comment "tpn1"
