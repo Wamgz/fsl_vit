@@ -106,7 +106,7 @@ class LabelPropagation(nn.Module):
 
         self.alpha = torch.tensor(0.99)
 
-    def forward(self, inputs):
+    def forward(self, imgs, labels):
         """
             inputs are preprocessed
             support:    (N_way*N_shot)x3x84x84
@@ -116,8 +116,14 @@ class LabelPropagation(nn.Module):
         """
         # init
         eps = np.finfo(float).eps
+        labels = self._map2ZeroStart(labels)
+        labels_unique, _ = torch.sort(torch.unique(labels))
 
-        [support, s_labels, query, q_labels] = inputs
+        ## 拆分support和query，加上对应的class_embedding
+        support_idxs, query_idxs = self._support_query_data(labels)
+
+        [support, s_labels, query, q_labels] = imgs[support_idxs], labels[support_idxs], imgs[query_idxs], labels[query_idxs]
+        s_labels, q_labels = torch.nn.functional.one_hot(s_labels, self.cls_per_episode), torch.nn.functional.one_hot(q_labels, self.cls_per_episode)
         num_classes = s_labels.shape[1]
         num_support = int(s_labels.shape[0] / num_classes)
         num_queries = int(query.shape[0] / num_classes)
