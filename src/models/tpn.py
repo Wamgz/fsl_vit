@@ -19,6 +19,7 @@ import numpy as np
 from src.utils.parser_util import get_parser
 from src.datasets.miniimagenet import MiniImageNet
 
+
 class CNNEncoder(nn.Module):
     """Encoder for feature embedding"""
 
@@ -78,7 +79,7 @@ class RelationNetwork(nn.Module):
         self.m0 = nn.MaxPool2d(2)  # max-pool without padding
         self.m1 = nn.MaxPool2d(2, padding=1)  # max-pool with padding
 
-    def forward(self, x):
+    def forward(self, x, rn):
         x = x.view(-1, 64, 5, 5)  # (100, 64, 5, 5)
 
         out = self.layer1(x)
@@ -93,67 +94,19 @@ class RelationNetwork(nn.Module):
         return out
 
 
-# class Prototypical(nn.Module):
-#     """Main Module for prototypical networlks"""
-#     def __init__(self, args):
-#         super(Prototypical, self).__init__()
-#         self.im_width, self.im_height, self.channels = list(map(int, args['x_dim'].split(',')))
-#         self.h_dim, self.z_dim = args['h_dim'], args['z_dim']
-#
-#         self.args = args
-#         self.encoder = CNNEncoder()
-#
-#     def forward(self, inputs):
-#         """
-#             inputs are preprocessed
-#             support:    (N_way*N_shot)x3x84x84
-#             query:      (N_way*N_query)x3x84x84
-#             s_labels:   (N_way*N_shot)xN_way, one-hot
-#             q_labels:   (N_way*N_query)xN_way, one-hot
-#         """
-#         [support, s_labels, query, q_labels] = inputs
-#         num_classes = s_labels.shape[1]
-#         num_support = int(s_labels.shape[0] / num_classes)
-#         num_queries = int(query.shape[0] / num_classes)
-#
-#         inp   = torch.cat((support,query), 0)
-#         emb   = self.encoder(inp) # 80x64x5x5
-#         emb_s, emb_q = torch.split(emb, [num_classes*num_support, num_classes*num_queries], 0)
-#         emb_s = emb_s.view(num_classes, num_support, 1600).mean(1)
-#         emb_q = emb_q.view(-1, 1600)
-#         emb_s = torch.unsqueeze(emb_s,0)     # 1xNxD
-#         emb_q = torch.unsqueeze(emb_q,1)     # Nx1xD
-#         dist  = ((emb_q-emb_s)**2).mean(2)   # NxNxD -> NxN
-#
-#         ce = nn.CrossEntropyLoss().to(device)
-#         loss = ce(-dist, torch.argmax(q_labels,1))
-#         ## acc
-#         pred = torch.argmax(-dist,1)
-#         gt   = torch.argmax(q_labels,1)
-#         correct = (pred==gt).sum()
-#         total   = num_queries*num_classes
-#         acc = 1.0 * correct.float() / float(total)
-#
-#         return loss, acc
-
-
 class LabelPropagation(nn.Module):
     """Label Propagation"""
 
     def __init__(self):
         super(LabelPropagation, self).__init__()
-        self.im_width, self.im_height, self.channels = (84, 84, 3)
+        self.im_width, self.im_height, self.channels = 84, 84, 3
 
         self.encoder = CNNEncoder()
         self.relation = RelationNetwork()
-        self.rn = 30
-        self.k = 20
-        self.alpha = torch.tensor(0.99, requires_grad=True)
 
-        self.cls_per_episode = 5
-        self.num_support = 5
-        self.num_query = 15
-    def forward(self, imgs, labels):
+        self.alpha = torch.tensor(0.99)
+
+    def forward(self, inputs):
         """
             inputs are preprocessed
             support:    (N_way*N_shot)x3x84x84
@@ -163,14 +116,8 @@ class LabelPropagation(nn.Module):
         """
         # init
         eps = np.finfo(float).eps
-        labels = self._map2ZeroStart(labels)
-        labels_unique, _ = torch.sort(torch.unique(labels))
 
-        ## 拆分support和query，加上对应的class_embedding
-        support_idxs, query_idxs = self._support_query_data(labels)
-
-        [support, s_labels, query, q_labels] = imgs[support_idxs], labels[support_idxs], imgs[query_idxs], labels[query_idxs]
-        s_labels, q_labels = torch.nn.functional.one_hot(s_labels, self.cls_per_episode), torch.nn.functional.one_hot(q_labels, self.cls_per_episode)
+        [support, s_labels, query, q_labels] = inputs
         num_classes = s_labels.shape[1]
         num_support = int(s_labels.shape[0] / num_classes)
         num_queries = int(query.shape[0] / num_classes)
@@ -182,7 +129,8 @@ class LabelPropagation(nn.Module):
 
         # Step2: Graph Construction
         ## sigmma
-        self.sigma = self.relation(emb_all)
+
+        self.sigma = self.relation(emb_all, 30)
 
         ## W
         emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
@@ -192,7 +140,8 @@ class LabelPropagation(nn.Module):
         W = torch.exp(-W / 2)
 
         ## keep top-k values
-        topk, indices = torch.topk(W, self.k)  # topk: (100, 20), indices: (100, 20)
+
+        topk, indices = torch.topk(W, 20)  # topk: (100, 20), indices: (100, 20)
         mask = torch.zeros_like(W)
         mask = mask.scatter(1, indices, 1)  # (100, 100)
         mask = ((mask + torch.t(mask)) > 0).type(
@@ -209,7 +158,7 @@ class LabelPropagation(nn.Module):
 
         # Step3: Label Propagation, F = (I-\alpha S)^{-1}Y
         ys = s_labels  # (25, 5)
-        yu = torch.zeros(num_classes * num_queries, num_classes)  # (75, 5)
+        yu = torch.zeros(num_classes * num_queries, num_classes) # (75, 5)
         if torch.cuda.is_available():
             yu = yu.cuda()
         # yu = (torch.ones(num_classes*num_queries, num_classes)/num_classes).to(device)
@@ -217,14 +166,14 @@ class LabelPropagation(nn.Module):
         eye = torch.eye(N)
         if torch.cuda.is_available():
             eye = eye.cuda()
-        s = torch.inverse(eye - self.alpha * S + eps)
+        s = torch.inverse(torch.eye(N) - self.alpha * S + eps)
         F = torch.matmul(s, y)  # (100, 5)
         Fq = F[num_classes * num_support:, :]  # query predictions，loss计算support和query set一起算，acc计算只计算query
 
         # Step4: Cross-Entropy Loss
         ce = nn.CrossEntropyLoss()
         if torch.cuda.is_available():
-            ce = ce.cuda();
+            ce = ce.cuda()
         ## both support and query loss
         gt = torch.argmax(torch.cat((s_labels, q_labels), 0), 1)
         loss = ce(F, gt)
@@ -236,7 +185,6 @@ class LabelPropagation(nn.Module):
         acc = 1.0 * correct.float() / float(total)
 
         return loss, acc
-
 
     def trainable_params(self):
         return self.parameters()
