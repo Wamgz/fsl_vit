@@ -107,6 +107,7 @@ class LabelPropagation(nn.Module):
         self.alpha = torch.tensor(0.99)
         self.num_support, self.num_query = 5, 15
         self.cls_per_episode = 5
+        print('tpn init end')
     def forward(self, imgs, labels):
         """
             inputs are preprocessed
@@ -125,9 +126,9 @@ class LabelPropagation(nn.Module):
 
         [support, s_labels, query, q_labels] = imgs[support_idxs], labels[support_idxs], imgs[query_idxs], labels[query_idxs]
         s_labels, q_labels = torch.nn.functional.one_hot(s_labels, self.cls_per_episode), torch.nn.functional.one_hot(q_labels, self.cls_per_episode)
-        num_classes = s_labels.shape[1]
-        num_support = int(s_labels.shape[0] / num_classes)
-        num_queries = int(query.shape[0] / num_classes)
+        num_classes = self.cls_per_episode
+        num_support = self.num_support
+        num_queries = self.num_query
 
         # Step1: Embedding
         inp = torch.cat((support, query), 0)  # (100, 3, 84, 84) 将suport和query set concat在一块
