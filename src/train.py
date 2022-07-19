@@ -72,7 +72,7 @@ def init_dataloader(opt, mode):
     sampler = init_sampler(opt, dataset.y, mode)
 
     dataloader_params = {
-        'pin_memory': True,
+        # 'pin_memory': True,
         'num_workers': 8
     }
     dataloader = torch.utils.data.DataLoader(dataset, batch_sampler=sampler, **dataloader_params)
@@ -151,7 +151,7 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
         logger.info('=== Epoch: {}, Learning Rate : {} === '.format(epoch, optim.state_dict()['param_groups'][0]['lr']))
         tr_iter = iter(tr_dataloader)
         model.train()
-
+        cnt = 0
         for batch in tqdm(tr_iter):
             optim.zero_grad()
             x, y = batch  # x: (batch, C, H, W), y:(batch, )
@@ -159,6 +159,10 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
             loss, acc = model(x, y)
             loss.backward()
             optim.step()
+            cnt += 1
+            if cnt == 999:
+                print('imgs: ', x)
+                print('labels: ', y)
             train_loss.append(loss.detach())
             train_acc.append(acc.detach())
         train_avg_loss = torch.tensor(train_loss[-opt.iterations:]).mean()
