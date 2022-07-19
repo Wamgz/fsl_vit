@@ -18,6 +18,7 @@ import torch.nn.functional as F
 import numpy as np
 from src.utils.parser_util import get_parser
 from src.datasets.miniimagenet import MiniImageNet
+torch.set_printoptions(precision=None, threshold=999999, edgeitems=None, linewidth=None, profile=None)
 
 
 class CNNEncoder(nn.Module):
@@ -117,6 +118,8 @@ class LabelPropagation(nn.Module):
             q_labels:   (N_way*N_query)xN_way, one-hot
         """
         # init
+        print('imgs', imgs)
+        print('lables', labels)
         eps = np.finfo(float).eps
         labels = self._map2ZeroStart(labels)
         labels_unique, _ = torch.sort(torch.unique(labels))
@@ -132,6 +135,7 @@ class LabelPropagation(nn.Module):
 
         # Step1: Embedding
         inp = torch.cat((support, query), 0)  # (100, 3, 84, 84) 将suport和query set concat在一块
+        print('inp', inp)
         emb_all = self.encoder(inp).view(-1, 1600)  # (100, 1600) 合并在一起提取特征
         N, d = emb_all.shape[0], emb_all.shape[1]
 
@@ -163,6 +167,7 @@ class LabelPropagation(nn.Module):
         D1 = torch.unsqueeze(D_sqrt_inv, 1).repeat(1, N)  # (100, 100)
         D2 = torch.unsqueeze(D_sqrt_inv, 0).repeat(N, 1)  # (100, 100)
         S = D1 * W * D2
+        print('S', S)
 
         # Step3: Label Propagation, F = (I-\alpha S)^{-1}Y
         ys = s_labels  # (25, 5)
@@ -187,6 +192,7 @@ class LabelPropagation(nn.Module):
         loss = ce(F, gt)
         ## acc
         predq = torch.argmax(Fq, 1)
+        print('predq', predq)
         gtq = torch.argmax(q_labels, 1)
         correct = (predq == gtq).sum()
         total = num_queries * num_classes
