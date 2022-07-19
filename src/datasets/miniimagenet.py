@@ -35,9 +35,9 @@ class MiniImageNet(data.Dataset):
                 self.im_width, self.im_height, self.channels = opt.width, opt.height, opt.channel
                 tsfm.append(transforms.Resize((self.im_height, self.im_width)))
 
-            # transforms.RandomCrop(self.im_width, padding=4),  # 先四周填充0，在把图像随机裁剪成32*32
-            # transforms.RandomHorizontalFlip(),  # 图像一半的概率翻转，一半的概率不翻转
-            # transforms.RandomRotation((-45, 45)),  # 随机旋转
+            transforms.RandomCrop(self.im_width, padding=4),  # 先四周填充0，在把图像随机裁剪成32*32
+            transforms.RandomHorizontalFlip(),  # 图像一半的概率翻转，一半的概率不翻转
+            transforms.RandomRotation((-45, 45)),  # 随机旋转
             tsfm.append(transforms.ToTensor())
 
             # tsfm.append(transforms.Normalize((0.4914, 0.4822, 0.4465), (0.229, 0.224, 0.225)))
