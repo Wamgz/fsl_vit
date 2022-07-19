@@ -356,6 +356,7 @@ class LabelPropagationVit(nn.Module):
         # Step1: Embedding
         inp = torch.cat((support, query), 0)  # (100, 3, 84, 84) 将suport和query set concat在一块
         emb_all = self.encoder(inp).view(100, -1)  # (100, 1600) 合并在一起提取特征
+        print('emb_all', emb_all)
 
         N, d = emb_all.shape[0], emb_all.shape[1]
 
@@ -386,6 +387,7 @@ class LabelPropagationVit(nn.Module):
         D1 = torch.unsqueeze(D_sqrt_inv, 1).repeat(1, N)  # (100, 100)
         D2 = torch.unsqueeze(D_sqrt_inv, 0).repeat(N, 1)  # (100, 100)
         S = D1 * W * D2
+        print('S', S)
 
         # Step3: Label Propagation, F = (I-\alpha S)^{-1}Y
         ys = s_labels  # (25, 5)
