@@ -18,7 +18,7 @@ import torch.nn.functional as F
 import numpy as np
 from src.utils.parser_util import get_parser
 from src.datasets.miniimagenet import MiniImageNet
-# torch.set_printoptions(precision=None, threshold=999999, edgeitems=None, linewidth=None, profile=None)
+torch.set_printoptions(precision=None, threshold=999999, edgeitems=None, linewidth=None, profile=None)
 
 
 class CNNEncoder(nn.Module):
@@ -133,7 +133,8 @@ class LabelPropagation(nn.Module):
 
         # Step1: Embedding
         inp = torch.cat((support, query), 0)  # (100, 3, 84, 84) 将suport和query set concat在一块
-        print('inp', inp)
+        logger.info('inp: {}'.format(inp))
+
         emb_all = self.encoder(inp).view(-1, 1600)  # (100, 1600) 合并在一起提取特征
         N, d = emb_all.shape[0], emb_all.shape[1]
 
@@ -141,7 +142,7 @@ class LabelPropagation(nn.Module):
         ## sigmma
 
         self.sigma = self.relation(emb_all, 30)
-        print('sigma', self.sigma)
+        logger.info('sigma: {}'.format(self.sigma))
         ## W
         emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
         emb1 = torch.unsqueeze(emb_all, 1)  # N*1*d
@@ -165,7 +166,7 @@ class LabelPropagation(nn.Module):
         D1 = torch.unsqueeze(D_sqrt_inv, 1).repeat(1, N)  # (100, 100)
         D2 = torch.unsqueeze(D_sqrt_inv, 0).repeat(N, 1)  # (100, 100)
         S = D1 * W * D2
-        print('S', S)
+        logger.info('S: {}'.format(S))
 
         # Step3: Label Propagation, F = (I-\alpha S)^{-1}Y
         ys = s_labels  # (25, 5)
@@ -179,7 +180,7 @@ class LabelPropagation(nn.Module):
             eye = eye.cuda()
         s = torch.inverse(eye - self.alpha * S + eps)
         F = torch.matmul(s, y)  # (100, 5)
-        print('F', F)
+        logger.info('F: {}'.format(F))
 
         Fq = F[num_classes * num_support:, :]  # query predictions，loss计算support和query set一起算，acc计算只计算query
 
@@ -192,7 +193,7 @@ class LabelPropagation(nn.Module):
         loss = ce(F, gt)
         ## acc
         predq = torch.argmax(Fq, 1)
-        print('predq', predq)
+        logger.info('predq: {}'.format(predq))
         gtq = torch.argmax(q_labels, 1)
         correct = (predq == gtq).sum()
         total = num_queries * num_classes
