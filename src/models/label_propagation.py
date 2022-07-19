@@ -284,20 +284,15 @@ class RelationNetwork(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, padding=0))
 
-        self.fc3 = nn.Linear(2 * 2, 8)
+        self.fc3 = nn.Linear(64, 8)
         self.fc4 = nn.Linear(8, 1)
 
-        self.m0 = nn.MaxPool2d(2)  # max-pool without padding
-        self.m1 = nn.MaxPool2d(2, padding=1)  # max-pool with padding
-
     def forward(self, x, rn):
-        x = x.view(-1, 1, 8, 8)  # (100, )
-
-        out = self.layer1(x)
-        out = self.layer2(out)
-        # flatten
-        out = out.view(out.size(0), -1)
-        out = F.relu(self.fc3(out))
+        # out = self.layer1(x)
+        # out = self.layer2(out)
+        # # flatten
+        # out = out.view(out.size(0), -1)
+        out = F.relu(self.fc3(x))
         out = self.fc4(out)  # no relu
 
         out = out.view(out.size(0), -1)  # bs*1
@@ -325,7 +320,6 @@ class LabelPropagationVit(nn.Module):
             use_avg_pool_out=True,
             channels=3
         )
-        self.relation = RelationNetwork()
 
         self.alpha = torch.tensor(0.99)
         self.num_support, self.num_query = 5, 15
