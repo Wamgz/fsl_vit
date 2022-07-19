@@ -96,13 +96,7 @@ def init_optim(opt, model, mlp=None):
     Initialize optimizer
     '''
     if opt.optimizer == 'Adam':
-        trainable_params = []
-        trainable_params.append({'params': model.trainable_params()})
-        if mlp != None:
-            trainable_params.append({'params': mlp.parameters()})
-        return torch.optim.Adam(trainable_params,
-                            lr=opt.learning_rate,
-                            weight_decay=opt.weight_decay)
+        return torch.optim.Adam(model.parameters(), lr=opt.learning_rate)
     elif opt.optimizer == 'SGD':
         return torch.optim.SGD(params=model.trainable_params(),
                                lr=opt.learning_rate,
