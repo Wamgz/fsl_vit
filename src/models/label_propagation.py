@@ -245,7 +245,7 @@ class ViT(nn.Module):
 
         x = self.transformer(x) # (batch, num_patch + 1, embedding_dim) -> (600, 65, 1024)
         if self.use_avg_pool_out:
-            x = self.norm(x) # (batch, num_patch + 1, embedding_dim)
+            # x = self.norm(x) # (batch, num_patch + 1, embedding_dim)
             x = self.avg_pool(x.transpose(1, 2))  # B C 1
             x = torch.flatten(x, 1)
             return x
