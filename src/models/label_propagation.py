@@ -298,11 +298,11 @@ class RelationNetwork(nn.Module):
 
         return out
 
-class LabelPropagation(nn.Module):
+class LabelPropagationVit(nn.Module):
     """Label Propagation"""
 
     def __init__(self):
-        super(LabelPropagation, self).__init__()
+        super(LabelPropagationVit, self).__init__()
         self.im_width, self.im_height, self.channels = 96, 96, 3
 
         self.encoder = ViT(

@@ -88,7 +88,7 @@ def init_model(opt):
     if opt.model_name == 'vit':
         return ViT(
             image_size=96,
-            patch_size=32,
+            patch_size=8,
             out_dim=64,
             embed_dim=64,
             depth=4,
@@ -98,8 +98,7 @@ def init_model(opt):
             tsfm_dropout=0.1,
             emb_dropout=0.1,
             use_avg_pool_out=True,
-            channels=3,
-            use_linear_v=opt.use_linear_v
+            channels=3
         ).cuda()
     else:
         return LabelPropagation().cuda()
