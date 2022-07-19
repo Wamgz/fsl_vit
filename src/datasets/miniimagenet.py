@@ -58,7 +58,6 @@ class MiniImageNet(data.Dataset):
                 image_data = data['image_data']  # (38400, 84, 84, 3)
                 class_dict = data['class_dict']  # dict, key_num = 64, {'n01532829': [0, 1, 2···599]}
         self.x = image_data
-        class_dict = sorted(class_dict.keys())
         self.y = np.arange(len(class_dict.keys())).reshape(1, -1).repeat(600, 1).squeeze(0)
 
     def __getitem__(self, idx):
