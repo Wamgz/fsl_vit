@@ -86,7 +86,7 @@ def init_model(opt):
     Initialize the ProtoNet
     '''
     if opt.model_name == 'vit':
-        return LabelPropagationVit.cuda()
+        return LabelPropagationVit().cuda()
     else:
         return LabelPropagation().cuda()
 
