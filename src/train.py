@@ -96,7 +96,7 @@ def init_optim(opt, model, mlp=None):
     Initialize optimizer
     '''
     if opt.optimizer == 'Adam':
-        return torch.optim.Adam(model.trainable_params(), lr=opt.learning_rate)
+        return torch.optim.Adam(model.parameters(), lr=opt.learning_rate)
     elif opt.optimizer == 'SGD':
         return torch.optim.SGD(params=model.trainable_params(),
                                lr=opt.learning_rate,
