@@ -214,61 +214,64 @@ class LabelPropagation(nn.Module):
             -1)  # (class_per_episode * num_query)
         return support_idxs, query_idxs
 if __name__ == '__main__':
-    model = LabelPropagation()
-    # region
-    def init_dataset(opt, mode):
-        dataset = MiniImageNet(mode=mode, opt=options)
-        _dataset_exception_handle(dataset=dataset, n_classes=len(np.unique(dataset.y)), mode=mode, opt=opt)
-        return dataset
-    def _dataset_exception_handle(dataset, n_classes, mode, opt):
-        n_classes = len(np.unique(dataset.y))
-        if mode == 'train' and n_classes < opt.classes_per_it_tr or mode == 'val' and n_classes < opt.classes_per_it_val:
-            raise (Exception('There are not enough classes in the data in order ' +
-                             'to satisfy the chosen classes_per_it. Decrease the ' +
-                             'classes_per_it_{tr/val} option and try again.'))
-    def init_sampler(opt, labels, mode, dataset_name='miniImagenet'):
-        num_support, num_query = 0, 0
-        if 'train' in mode:
-            classes_per_it = opt.classes_per_it_tr
-            num_support, num_query = opt.num_support_tr, opt.num_query_tr
-        else:
-            classes_per_it = opt.classes_per_it_val
-            num_support, num_query = opt.num_support_val, opt.num_query_val
-
-        return PrototypicalBatchSampler(labels=labels,
-                                        classes_per_it=classes_per_it,
-                                        num_support=num_support,
-                                        num_query=num_query,
-                                        iterations=opt.iterations)
-    def init_dataloader(opt, mode):
-        dataset = init_dataset(opt, mode)
-        sampler = init_sampler(opt, dataset.y, mode)
-
-        dataloader_params = {
-            # 'pin_memory': True,
-            # 'num_workers': 8
-        }
-        dataloader = torch.utils.data.DataLoader(dataset, batch_sampler=sampler, **dataloader_params)
-        return dataset, dataloader
-    # endregion
-
-    options = get_parser().parse_args()
-    print('option', options)
-    tr_dataset, tr_dataloader = init_dataloader(options, 'train')
-    tr_iter = iter(tr_dataloader)
-    tr_iter.__next__()
-    optim = torch.optim.Adam(model.trainable_params(), lr=0.001)
-    model.train()
-    train_loss = []
-    train_acc = []
-    for batch in tr_iter:
-        optim.zero_grad()
-        x, y = batch  # x: (batch, C, H, W), y:(batch, )
-        loss, acc = model(x, y)
-        loss.backward()
-        optim.step()
-        train_loss.append(loss.detach())
-        train_acc.append(acc.detach())
-        print(loss, acc)
-    train_avg_loss = torch.tensor(train_loss[:]).mean()
-    train_avg_acc = torch.tensor(train_acc[:]).mean()
+    model = CNNEncoder()
+    input = torch.randn((100, 3, 84, 84))
+    print(model(input).shape)
+    # model = LabelPropagation()
+    # # region
+    # def init_dataset(opt, mode):
+    #     dataset = MiniImageNet(mode=mode, opt=options)
+    #     _dataset_exception_handle(dataset=dataset, n_classes=len(np.unique(dataset.y)), mode=mode, opt=opt)
+    #     return dataset
+    # def _dataset_exception_handle(dataset, n_classes, mode, opt):
+    #     n_classes = len(np.unique(dataset.y))
+    #     if mode == 'train' and n_classes < opt.classes_per_it_tr or mode == 'val' and n_classes < opt.classes_per_it_val:
+    #         raise (Exception('There are not enough classes in the data in order ' +
+    #                          'to satisfy the chosen classes_per_it. Decrease the ' +
+    #                          'classes_per_it_{tr/val} option and try again.'))
+    # def init_sampler(opt, labels, mode, dataset_name='miniImagenet'):
+    #     num_support, num_query = 0, 0
+    #     if 'train' in mode:
+    #         classes_per_it = opt.classes_per_it_tr
+    #         num_support, num_query = opt.num_support_tr, opt.num_query_tr
+    #     else:
+    #         classes_per_it = opt.classes_per_it_val
+    #         num_support, num_query = opt.num_support_val, opt.num_query_val
+    #
+    #     return PrototypicalBatchSampler(labels=labels,
+    #                                     classes_per_it=classes_per_it,
+    #                                     num_support=num_support,
+    #                                     num_query=num_query,
+    #                                     iterations=opt.iterations)
+    # def init_dataloader(opt, mode):
+    #     dataset = init_dataset(opt, mode)
+    #     sampler = init_sampler(opt, dataset.y, mode)
+    #
+    #     dataloader_params = {
+    #         # 'pin_memory': True,
+    #         # 'num_workers': 8
+    #     }
+    #     dataloader = torch.utils.data.DataLoader(dataset, batch_sampler=sampler, **dataloader_params)
+    #     return dataset, dataloader
+    # # endregion
+    #
+    # options = get_parser().parse_args()
+    # print('option', options)
+    # tr_dataset, tr_dataloader = init_dataloader(options, 'train')
+    # tr_iter = iter(tr_dataloader)
+    # tr_iter.__next__()
+    # optim = torch.optim.Adam(model.trainable_params(), lr=0.001)
+    # model.train()
+    # train_loss = []
+    # train_acc = []
+    # for batch in tr_iter:
+    #     optim.zero_grad()
+    #     x, y = batch  # x: (batch, C, H, W), y:(batch, )
+    #     loss, acc = model(x, y)
+    #     loss.backward()
+    #     optim.step()
+    #     train_loss.append(loss.detach())
+    #     train_acc.append(acc.detach())
+    #     print(loss, acc)
+    # train_avg_loss = torch.tensor(train_loss[:]).mean()
+    # train_avg_acc = torch.tensor(train_acc[:]).mean()

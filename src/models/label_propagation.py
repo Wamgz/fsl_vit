@@ -363,7 +363,6 @@ class LabelPropagationVit(nn.Module):
         ## sigmma
 
         self.sigma = self.relation(emb_all, 30)
-        print('sigma', self.sigma)
         ## W
         emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
         emb1 = torch.unsqueeze(emb_all, 1)  # N*1*d
@@ -413,6 +412,7 @@ class LabelPropagationVit(nn.Module):
         predq = torch.argmax(Fq, 1)
         gtq = torch.argmax(q_labels, 1)
         correct = (predq == gtq).sum()
+        print('predq', predq)
         total = num_queries * num_classes
         acc = 1.0 * correct.float() / float(total)
 
