@@ -285,7 +285,7 @@ class RelationNetwork(nn.Module):
         self.m1 = nn.MaxPool2d(2, padding=1)  # max-pool with padding
 
     def forward(self, x, rn):
-        x = x.view(-1, 1, 8, 8)  # (100, 1, 8, 8)
+        x = x.view(-1, 1, 8, 8)  # (100, )
 
         out = self.layer1(x)
         out = self.layer2(out)

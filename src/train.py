@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from src.utils.logger_utils import logger
 
-from src.models.label_propagation import ViT
+from src.models.label_propagation import ViT, LabelPropagationVit
 from src.models.tpn import LabelPropagation
 from data_loaders.data_fetchers import DataFetcher
 from src.data_loaders.prototypical_batch_sampler import PrototypicalBatchSampler
@@ -86,20 +86,7 @@ def init_model(opt):
     Initialize the ProtoNet
     '''
     if opt.model_name == 'vit':
-        return ViT(
-            image_size=96,
-            patch_size=8,
-            out_dim=64,
-            embed_dim=64,
-            depth=4,
-            heads=8,
-            dim_head=8,
-            mlp_dim=64,
-            tsfm_dropout=0.1,
-            emb_dropout=0.1,
-            use_avg_pool_out=True,
-            channels=3
-        ).cuda()
+        return LabelPropagationVit.cuda()
     else:
         return LabelPropagation().cuda()
 
