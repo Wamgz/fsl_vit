@@ -1,7 +1,7 @@
 # coding=UTF-8
 python ../train.py \
 --dataset_root ~/WZ/data \
---epochs 1000 \
+--epochs 1 \
 --dataset_name miniImagenet \
 --model_name tpn \
 --classes_per_it_tr 5 \
@@ -12,7 +12,7 @@ python ../train.py \
 --num_query_val 15 \
 --height 84 \
 --width 84 \
---iterations 1000 \
+--iterations 100 \
 --learning_rate 0.001 \
 --cuda 0 \
 --comment "tpn1"
