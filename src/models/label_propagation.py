@@ -10,6 +10,13 @@ import torch.nn.functional as F
 import numpy as np
 # helpers
 
+from src.data_loaders.prototypical_batch_sampler import PrototypicalBatchSampler
+from src.utils.logger_utils import logger
+import torch.nn.functional as F
+import numpy as np
+from src.utils.parser_util import get_parser
+from src.datasets.miniimagenet import MiniImageNet
+
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
 
@@ -65,9 +72,8 @@ class Attention(nn.Module):
         ) if project_out else nn.Identity()
 
     def forward(self, x):
-        batch, num_patch, embed_dim = x.shape
         qkv = self.to_qkv(x).chunk(3, dim=-1) # tuple: ((600, 65, 1024), (600, 65, 1024), (600, 65, 1024))
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b n) h d', h=self.heads), qkv) # (batch, num_head, num_patch, head_dim) -> (600, 16, 65, inner_dim / head)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), qkv) # (batch, num_head, num_patch, head_dim) -> (600, 16, 65, inner_dim / head)
 
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # (batch, num_head, num_patch * num_patch, num_patch * num_patch)
 
@@ -75,7 +81,7 @@ class Attention(nn.Module):
         attn = self.dropout(attn)
 
         out = torch.matmul(attn, v) # attn矩阵乘v不是点乘（对v加权），v的维度不变
-        out = rearrange(out, '(b n) h d -> b n (h d)', b=batch, n=num_patch) # (batch, num_patch, num_head * head_dim(inner_dim))
+        out = rearrange(out, 'b h n d -> b n (h d)') # (batch, num_patch, num_head * head_dim(inner_dim))
 
         return self.to_out(out)
 
@@ -307,7 +313,7 @@ class LabelPropagationVit(nn.Module):
 
         self.encoder = ViT(
             image_size=96,
-            patch_size=16,
+            patch_size=8,
             out_dim=64,
             embed_dim=64,
             depth=4,
@@ -442,6 +448,61 @@ def get_parameter_number(model):
     return {'Total': total_num, 'Trainable': trainable_num}
 
 if __name__ == '__main__':
-    model = RelationNetwork();
-    input = torch.randn(100, 64)
-    print(model(input, 0).shape)
+    model = LabelPropagationVit()
+    # region
+    def init_dataset(opt, mode):
+        dataset = MiniImageNet(mode=mode, opt=options)
+        _dataset_exception_handle(dataset=dataset, n_classes=len(np.unique(dataset.y)), mode=mode, opt=opt)
+        return dataset
+    def _dataset_exception_handle(dataset, n_classes, mode, opt):
+        n_classes = len(np.unique(dataset.y))
+        if mode == 'train' and n_classes < opt.classes_per_it_tr or mode == 'val' and n_classes < opt.classes_per_it_val:
+            raise (Exception('There are not enough classes in the data in order ' +
+                             'to satisfy the chosen classes_per_it. Decrease the ' +
+                             'classes_per_it_{tr/val} option and try again.'))
+    def init_sampler(opt, labels, mode, dataset_name='miniImagenet'):
+        num_support, num_query = 0, 0
+        if 'train' in mode:
+            classes_per_it = opt.classes_per_it_tr
+            num_support, num_query = opt.num_support_tr, opt.num_query_tr
+        else:
+            classes_per_it = opt.classes_per_it_val
+            num_support, num_query = opt.num_support_val, opt.num_query_val
+
+        return PrototypicalBatchSampler(labels=labels,
+                                        classes_per_it=classes_per_it,
+                                        num_support=num_support,
+                                        num_query=num_query,
+                                        iterations=opt.iterations)
+    def init_dataloader(opt, mode):
+        dataset = init_dataset(opt, mode)
+        sampler = init_sampler(opt, dataset.y, mode)
+
+        dataloader_params = {
+            # 'pin_memory': True,
+            # 'num_workers': 8
+        }
+        dataloader = torch.utils.data.DataLoader(dataset, batch_sampler=sampler, **dataloader_params)
+        return dataset, dataloader
+    # endregion
+
+    options = get_parser().parse_args()
+    print('option', options)
+    tr_dataset, tr_dataloader = init_dataloader(options, 'train')
+    tr_iter = iter(tr_dataloader)
+    tr_iter.__next__()
+    optim = torch.optim.Adam(model.trainable_params(), lr=0.001)
+    model.train()
+    train_loss = []
+    train_acc = []
+    for batch in tr_iter:
+        optim.zero_grad()
+        x, y = batch  # x: (batch, C, H, W), y:(batch, )
+        loss, acc = model(x, y)
+        loss.backward()
+        optim.step()
+        train_loss.append(loss.detach())
+        train_acc.append(acc.detach())
+        print(loss, acc)
+    train_avg_loss = torch.tensor(train_loss[:]).mean()
+    train_avg_acc = torch.tensor(train_acc[:]).mean()

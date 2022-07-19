@@ -21,12 +21,12 @@ def get_parser():
     parser.add_argument('-height', '--height',
                         type=int,
                         help='image resized height',
-                        default=84)
+                        default=96)
 
     parser.add_argument('-width', '--width',
                         type=int,
                         help='image resized width',
-                        default=84)
+                        default=96)
 
     parser.add_argument('-channel', '--channel',
                         type=int,
