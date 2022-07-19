@@ -1,7 +1,7 @@
 # coding=UTF-8
 python ../train.py \
 --dataset_root ~/WZ/data \
---epochs 1 \
+--epochs 1000 \
 --dataset_name miniImagenet \
 --classes_per_it_tr 5 \
 --num_support_tr 5 \
@@ -18,4 +18,4 @@ python ../train.py \
 --cuda 3 \
 --use_aux_loss true \
 --use_linear_v false \
---comment "仅对label加权"
+--comment "纯tpn，vit backbone"
