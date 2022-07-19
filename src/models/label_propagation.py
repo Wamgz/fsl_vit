@@ -17,6 +17,8 @@ import numpy as np
 from src.utils.parser_util import get_parser
 from src.datasets.miniimagenet import MiniImageNet
 
+torch.set_printoptions(precision=None, threshold=999999, edgeitems=None, linewidth=None, profile=None)
+
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
 
@@ -351,6 +353,7 @@ class LabelPropagationVit(nn.Module):
         # Step1: Embedding
         inp = torch.cat((support, query), 0)  # (100, 3, 84, 84) 将suport和query set concat在一块
         emb_all = self.encoder(inp).view(100, -1)  # (100, 1600) 合并在一起提取特征
+        logger.info('3.W: {}'.format(W))
 
         N, d = emb_all.shape[0], emb_all.shape[1]
 
@@ -364,7 +367,11 @@ class LabelPropagationVit(nn.Module):
         emb1 = torch.unsqueeze(emb_all, 1)  # N*1*d
         emb2 = torch.unsqueeze(emb_all, 0)  # 1*N*d
         W = ((emb1 - emb2) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
+        logger.info('3.W: {}'.format(W))
+
+        logger.info('3.W: {}'.format(W))
         W = torch.exp(-W / 2)
+        logger.info('3.W: {}'.format(W))
 
         ## keep top-k values
 
@@ -381,7 +388,11 @@ class LabelPropagationVit(nn.Module):
         D_sqrt_inv = torch.sqrt(1.0 / (D + eps))  # (100, )
         D1 = torch.unsqueeze(D_sqrt_inv, 1).repeat(1, N)  # (100, 100)
         D2 = torch.unsqueeze(D_sqrt_inv, 0).repeat(N, 1)  # (100, 100)
+        logger.info('3.W: {}'.format(W))
+        logger.info('3.W: {}'.format(W))
+
         S = D1 * W * D2
+        logger.info('3.W: {}'.format(W))
 
         # Step3: Label Propagation, F = (I-\alpha S)^{-1}Y
         ys = s_labels  # (25, 5)
@@ -406,6 +417,8 @@ class LabelPropagationVit(nn.Module):
         loss = ce(F, gt)
         ## acc
         predq = torch.argmax(Fq, 1)
+        logger.info('3.W: {}'.format(W))
+
         gtq = torch.argmax(q_labels, 1)
         correct = (predq == gtq).sum()
         total = num_queries * num_classes
