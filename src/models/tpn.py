@@ -145,9 +145,13 @@ class LabelPropagation(nn.Module):
         logger.info('sigma: {}'.format(self.sigma))
         ## W
         emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
+        logger.info('emb_all: {}'.format(emb_all))
+
         emb1 = torch.unsqueeze(emb_all, 1)  # N*1*d
         emb2 = torch.unsqueeze(emb_all, 0)  # 1*N*d
-        W = ((emb1 - emb2) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
+        W = ((emb1 - emb2) ** 2)
+        logger.info('0.W: {}'.format(W))
+        W = W.mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
         logger.info('1.W: {}'.format(W))
 
         W = torch.exp(-W / 2)
