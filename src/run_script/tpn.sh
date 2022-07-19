@@ -12,7 +12,7 @@ python ../train.py \
 --num_query_val 15 \
 --height 84 \
 --width 84 \
---iterations 300 \
+--iterations 10 \
 --learning_rate 0.001 \
 --cuda 0 \
 --comment "tpn1"

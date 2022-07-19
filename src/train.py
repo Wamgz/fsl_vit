@@ -160,9 +160,9 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
             loss.backward()
             optim.step()
             cnt += 1
-            if cnt == 299:
-                print('imgs: ', x)
-                print('labels: ', y)
+            if cnt == 9:
+                logger.info('imgs: {}'.format(x))
+                logger.info('labels: {}'.format(y))
             train_loss.append(loss.detach())
             train_acc.append(acc.detach())
         train_avg_loss = torch.tensor(train_loss[-opt.iterations:]).mean()
