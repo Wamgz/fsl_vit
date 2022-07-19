@@ -160,7 +160,7 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
             loss.backward()
             optim.step()
             cnt += 1
-            if cnt == 999:
+            if cnt == 50:
                 print('imgs: ', x)
                 print('labels: ', y)
             train_loss.append(loss.detach())
