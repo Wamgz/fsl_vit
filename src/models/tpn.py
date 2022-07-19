@@ -141,11 +141,11 @@ class LabelPropagation(nn.Module):
         # Step2: Graph Construction
         ## sigmma
 
-        self.sigma = self.relation(emb_all, 30)
-        logger.info('sigma: {}'.format(self.sigma))
+        # self.sigma = self.relation(emb_all, 30)
+        # logger.info('sigma: {}'.format(self.sigma))
         ## W
-        emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
-        logger.info('emb_all: {}'.format(emb_all))
+        # emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
+        # logger.info('emb_all: {}'.format(emb_all))
 
         emb1 = torch.unsqueeze(emb_all, 1)  # N*1*d
         emb2 = torch.unsqueeze(emb_all, 0)  # 1*N*d
