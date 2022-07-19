@@ -139,8 +139,8 @@ class PatchEmbed(nn.Module):
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
         x = self.proj(x).flatten(2).transpose(1, 2)  # （1, 3, 224, 224） -> (1, 96, 56 ,56) -> (1, 96, 56 * 56) -> (1, 3136, 96)B Ph*Pw C
-        if self.norm is not None:
-            x = self.norm(x)
+        # if self.norm is not None:
+        #     x = self.norm(x)
         return x
 
 class Mlp(nn.Module):
@@ -187,7 +187,7 @@ class ViT(nn.Module):
             self.to_patch_embedding = nn.Sequential(
                 Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=patch_height, p2=patch_width),
                 nn.Linear(patch_dim, embed_dim), # patch dim: 3072, dim: 1024
-                nn.LayerNorm(embed_dim)
+                # nn.LayerNorm(embed_dim)
             )
 
 
