@@ -1,7 +1,7 @@
 # coding=UTF-8
 python ../train.py \
 --dataset_root ~/WZ/data \
---epochs 1 \
+--epochs 1000 \
 --dataset_name miniImagenet \
 --model_name tpn \
 --classes_per_it_tr 5 \

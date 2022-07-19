@@ -358,10 +358,10 @@ class LabelPropagationVit(nn.Module):
         # Step2: Graph Construction
         ## sigmma
 
-        self.sigma = self.relation(emb_all, 30)
-        print('self.sigma', self.sigma)
+        # self.sigma = self.relation(emb_all, 30)
+        # print('self.sigma', self.sigma)
         ## W
-        emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
+        # emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
         emb1 = torch.unsqueeze(emb_all, 1)  # N*1*d
         emb2 = torch.unsqueeze(emb_all, 0)  # 1*N*d
         W = ((emb1 - emb2) ** 2).mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
