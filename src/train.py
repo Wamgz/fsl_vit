@@ -275,19 +275,19 @@ def main():
                 lr_scheduler=lr_scheduler,
                 tr_dataset=tr_dataset,
                 val_dataset=val_dataset)
-    best_state, best_acc, train_loss, train_acc, val_loss, val_acc = res
-    logger.info('Testing with last model..')
-    test(opt=options,
-         test_dataloader=test_dataloader,
-         model=model,
-         test_dataset=test_dataset)
-
-    model.load_state_dict(best_state)
-    logger.info('Testing with best model..')
-    test(opt=options,
-         test_dataloader=test_dataloader,
-         model=model,
-         test_dataset=test_dataset)
+    # best_state, best_acc, train_loss, train_acc, val_loss, val_acc = res
+    # logger.info('Testing with last model..')
+    # test(opt=options,
+    #      test_dataloader=test_dataloader,
+    #      model=model,
+    #      test_dataset=test_dataset)
+    #
+    # model.load_state_dict(best_state)
+    # logger.info('Testing with best model..')
+    # test(opt=options,
+    #      test_dataloader=test_dataloader,
+    #      model=model,
+    #      test_dataset=test_dataset)
 
 if __name__ == '__main__':
     main()
