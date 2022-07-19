@@ -18,7 +18,7 @@ import torch.nn.functional as F
 import numpy as np
 from src.utils.parser_util import get_parser
 from src.datasets.miniimagenet import MiniImageNet
-torch.set_printoptions(precision=None, threshold=999999, edgeitems=None, linewidth=None, profile=None)
+# torch.set_printoptions(precision=None, threshold=999999, edgeitems=None, linewidth=None, profile=None)
 
 
 class CNNEncoder(nn.Module):

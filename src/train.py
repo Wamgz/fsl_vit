@@ -160,7 +160,7 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
             loss.backward()
             optim.step()
             cnt += 1
-            if cnt == 5:
+            if cnt == :
                 print('imgs: ', x)
                 print('labels: ', y)
             train_loss.append(loss.detach())
