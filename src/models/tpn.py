@@ -118,8 +118,6 @@ class LabelPropagation(nn.Module):
             q_labels:   (N_way*N_query)xN_way, one-hot
         """
         # init
-        print('imgs', imgs)
-        print('lables', labels)
         eps = np.finfo(float).eps
         labels = self._map2ZeroStart(labels)
         labels_unique, _ = torch.sort(torch.unique(labels))

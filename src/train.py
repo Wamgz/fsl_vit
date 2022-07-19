@@ -151,6 +151,7 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
         logger.info('=== Epoch: {}, Learning Rate : {} === '.format(epoch, optim.state_dict()['param_groups'][0]['lr']))
         tr_iter = iter(tr_dataloader)
         model.train()
+
         for batch in tqdm(tr_iter):
             optim.zero_grad()
             x, y = batch  # x: (batch, C, H, W), y:(batch, )
