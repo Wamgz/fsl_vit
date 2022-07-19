@@ -385,6 +385,8 @@ class LabelPropagationVit(nn.Module):
 
         ## normalize
         D = W.sum(0)  # (100, )
+        logger.info('D: {}'.format(D))
+
         D_sqrt_inv = torch.sqrt(1.0 / (D + eps))  # (100, )
         D1 = torch.unsqueeze(D_sqrt_inv, 1).repeat(1, N)  # (100, 100)
         D2 = torch.unsqueeze(D_sqrt_inv, 0).repeat(N, 1)  # (100, 100)
