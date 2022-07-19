@@ -181,6 +181,8 @@ class LabelPropagation(nn.Module):
             eye = eye.cuda()
         s = torch.inverse(eye - self.alpha * S + eps)
         F = torch.matmul(s, y)  # (100, 5)
+        print('F', F)
+
         Fq = F[num_classes * num_support:, :]  # query predictions，loss计算support和query set一起算，acc计算只计算query
 
         # Step4: Cross-Entropy Loss
