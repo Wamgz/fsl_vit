@@ -324,6 +324,7 @@ class LabelPropagationVit(nn.Module):
         self.alpha = torch.tensor(0.99)
         self.num_support, self.num_query = 5, 15
         self.cls_per_episode = 5
+        self.relation = RelationNetwork()
         print('tpn init end')
     def forward(self, imgs, labels):
         """
@@ -358,6 +359,7 @@ class LabelPropagationVit(nn.Module):
         ## sigmma
 
         self.sigma = self.relation(emb_all, 30)
+        print('self.sigma', self.sigma)
         ## W
         emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
         emb1 = torch.unsqueeze(emb_all, 1)  # N*1*d
