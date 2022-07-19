@@ -119,10 +119,8 @@ class LabelPropagation(nn.Module):
         """
         # init
         eps = np.finfo(float).eps
-        print('before labels', labels)
         labels = self._map2ZeroStart(labels)
         labels_unique, _ = torch.sort(torch.unique(labels))
-        print('after labels', labels)
 
         ## 拆分support和query，加上对应的class_embedding
         support_idxs, query_idxs = self._support_query_data(labels)
