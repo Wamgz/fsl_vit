@@ -269,7 +269,7 @@ class RelationNetwork(nn.Module):
 
         self.layer1 = nn.Sequential(
             nn.Conv2d(1, 8, kernel_size=3, padding=1),
-            nn.BatchNorm2d(16),
+            nn.BatchNorm2d(8),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, padding=0))
         self.layer2 = nn.Sequential(
@@ -442,21 +442,6 @@ def get_parameter_number(model):
     return {'Total': total_num, 'Trainable': trainable_num}
 
 if __name__ == '__main__':
-    model = ViT(
-            image_size=96,
-            patch_size=16,
-            out_dim=64,
-            embed_dim=64,
-            depth=4,
-            heads=8,
-            dim_head=8,
-            mlp_dim=64,
-            tsfm_dropout=0.1,
-            emb_dropout=0.1,
-            use_avg_pool_out=True,
-            channels=3
-        )
-
-    x = torch.randn((400, 3, 96, 96))
-    print(model(x).shape)
-    # num_param = get_parameter_number(model)
+    model = RelationNetwork();
+    input = torch.randn(100, 64)
+    print(model(input, 0).shape)
