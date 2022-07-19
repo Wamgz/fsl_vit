@@ -72,7 +72,7 @@ def init_dataloader(opt, mode):
     sampler = init_sampler(opt, dataset.y, mode)
 
     dataloader_params = {
-        # 'pin_memory': True,
+        'pin_memory': True,
         'num_workers': 8
     }
     dataloader = torch.utils.data.DataLoader(dataset, batch_sampler=sampler, **dataloader_params)
