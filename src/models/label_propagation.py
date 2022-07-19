@@ -367,11 +367,11 @@ class LabelPropagationVit(nn.Module):
         emb1 = torch.unsqueeze(emb_all, 1)  # N*1*d
         emb2 = torch.unsqueeze(emb_all, 0)  # 1*N*d
         W = ((emb1 - emb2) ** 2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
-        logger.info('1.W: {}'.format(W))
+        # logger.info('1.W: {}'.format(W))
         W = W.mean(2)
-        logger.info('2.W: {}'.format(W))
+        # logger.info('2.W: {}'.format(W))
         W = torch.exp(-W / 2)
-        logger.info('3.W: {}'.format(W))
+        # logger.info('3.W: {}'.format(W))
 
         ## keep top-k values
 
@@ -385,16 +385,16 @@ class LabelPropagationVit(nn.Module):
 
         ## normalize
         D = W.sum(0)  # (100, )
-        logger.info('D: {}'.format(D))
+        # logger.info('D: {}'.format(D))
 
         D_sqrt_inv = torch.sqrt(1.0 / (D + eps))  # (100, )
         D1 = torch.unsqueeze(D_sqrt_inv, 1).repeat(1, N)  # (100, 100)
         D2 = torch.unsqueeze(D_sqrt_inv, 0).repeat(N, 1)  # (100, 100)
-        logger.info('D1: {}'.format(D1))
-        logger.info('D2: {}'.format(D2))
+        # logger.info('D1: {}'.format(D1))
+        # logger.info('D2: {}'.format(D2))
 
         S = D1 * W * D2
-        logger.info('S: {}'.format(S))
+        # logger.info('S: {}'.format(S))
 
         # Step3: Label Propagation, F = (I-\alpha S)^{-1}Y
         ys = s_labels  # (25, 5)
@@ -419,7 +419,7 @@ class LabelPropagationVit(nn.Module):
         loss = ce(F, gt)
         ## acc
         predq = torch.argmax(Fq, 1)
-        logger.info('predq: {}'.format(predq))
+        # logger.info('predq: {}'.format(predq))
 
         gtq = torch.argmax(q_labels, 1)
         correct = (predq == gtq).sum()
