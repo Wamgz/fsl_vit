@@ -290,10 +290,10 @@ class RelationNetwork(nn.Module):
         self.fc4 = nn.Linear(8, 1)
 
     def forward(self, x, rn):
-        # out = self.layer1(x)
-        # out = self.layer2(out)
-        # # flatten
-        # out = out.view(out.size(0), -1)
+        out = self.layer1(x)
+        out = self.layer2(out)
+        # flatten
+        out = out.view(out.size(0), -1)
         out = F.relu(self.fc3(x))
         out = self.fc4(out)  # no relu
 
