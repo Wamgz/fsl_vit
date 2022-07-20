@@ -150,12 +150,12 @@ class LabelPropagation(nn.Module):
         emb1 = torch.unsqueeze(emb_all, 1)  # N*1*d
         emb2 = torch.unsqueeze(emb_all, 0)  # 1*N*d
         W = ((emb1 - emb2) ** 2)
-        logger.info('0.W: {}'.format(W))
+        # logger.info('0.W: {}'.format(W))
         W = W.mean(2)  # N*N*d -> N*N，实现wij = (fi - fj)**2
-        logger.info('1.W: {}'.format(W))
+        # logger.info('1.W: {}'.format(W))
 
         W = torch.exp(-W / 2)
-        logger.info('2.W: {}'.format(W))
+        # logger.info('2.W: {}'.format(W))
 
         ## keep top-k values
 

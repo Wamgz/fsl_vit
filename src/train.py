@@ -155,6 +155,8 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, tr_dataset, val_datase
         for batch in tqdm(tr_iter):
             optim.zero_grad()
             x, y = batch  # x: (batch, C, H, W), y:(batch, )
+            print('x: ', x)
+            print('y: ', y)
             x, y = x.cuda(), y.cuda()
             loss, acc = model(x, y)
             loss.backward()
