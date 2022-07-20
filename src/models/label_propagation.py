@@ -360,10 +360,10 @@ class LabelPropagationVit(nn.Module):
         # Step2: Graph Construction
         ## sigmma
 
-        # self.sigma = self.relation(emb_all, 30)
+        self.sigma = self.relation(emb_all, 30)
         # logger.info('sigma: {}'.format(self.sigma))
-        ## W
-        # emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
+        # W
+        emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
         # logger.info('emb_all: {}'.format(emb_all))
 
         emb1 = torch.unsqueeze(emb_all, 1)  # N*1*d
