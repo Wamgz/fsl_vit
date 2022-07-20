@@ -64,7 +64,6 @@ class MiniImageNet(data.Dataset):
         x = self.x[idx]
         if self.transform:
             x = self.transform(x)
-        print('__getitem__: ', x.size)
         x = torch.from_numpy(np.transpose(np.asarray(x), (2,0,1))).float()
         return x, self.y[idx]
 

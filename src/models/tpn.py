@@ -133,7 +133,7 @@ class LabelPropagation(nn.Module):
 
         # Step1: Embedding
         inp = torch.cat((support, query), 0)  # (100, 3, 84, 84) 将suport和query set concat在一块
-        logger.info('inp: {}'.format(inp))
+        # logger.info('inp: {}'.format(inp))
 
         emb_all = self.encoder(inp).view(-1, 1600)  # (100, 1600) 合并在一起提取特征
         N, d = emb_all.shape[0], emb_all.shape[1]
@@ -141,10 +141,10 @@ class LabelPropagation(nn.Module):
         # Step2: Graph Construction
         ## sigmma
 
-        # self.sigma = self.relation(emb_all, 30)
+        self.sigma = self.relation(emb_all, 30)
         # logger.info('sigma: {}'.format(self.sigma))
         ## W
-        # emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
+        emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
         # logger.info('emb_all: {}'.format(emb_all))
 
         emb1 = torch.unsqueeze(emb_all, 1)  # N*1*d
@@ -166,15 +166,15 @@ class LabelPropagation(nn.Module):
             torch.float32)  # torch.t() 期望 input 为<= 2-D张量并转置尺寸0和1。   # union, kNN graph
         # mask = ((mask>0)&(torch.t(mask)>0)).type(torch.float32)  # intersection, kNN graph
         W = W * mask  # 构建无向图，上面的mask是为了保证把wij和wji都保留下来
-        logger.info('3.W: {}'.format(W))
+        # logger.info('3.W: {}'.format(W))
 
         ## normalize
         D = W.sum(0)  # (100, )
         D_sqrt_inv = torch.sqrt(1.0 / (D + eps))  # (100, )
         D1 = torch.unsqueeze(D_sqrt_inv, 1).repeat(1, N)  # (100, 100)
         D2 = torch.unsqueeze(D_sqrt_inv, 0).repeat(N, 1)  # (100, 100)
-        logger.info('D1: {}'.format(D1))
-        logger.info('D2: {}'.format(D2))
+        # logger.info('D1: {}'.format(D1))
+        # logger.info('D2: {}'.format(D2))
 
         S = D1 * W * D2
         # logger.info('S: {}'.format(S))
@@ -190,9 +190,9 @@ class LabelPropagation(nn.Module):
         if torch.cuda.is_available():
             eye = eye.cuda()
         s = torch.inverse(eye - self.alpha * S + eps)
-        logger.info('s: {}'.format(s))
+        # logger.info('s: {}'.format(s))
         F = torch.matmul(s, y)  # (100, 5)
-        logger.info('F: {}'.format(F))
+        # logger.info('F: {}'.format(F))
 
         Fq = F[num_classes * num_support:, :]  # query predictions，loss计算support和query set一起算，acc计算只计算query
 
@@ -205,7 +205,7 @@ class LabelPropagation(nn.Module):
         loss = ce(F, gt)
         ## acc
         predq = torch.argmax(Fq, 1)
-        logger.info('predq: {}'.format(predq))
+        # logger.info('predq: {}'.format(predq))
         gtq = torch.argmax(q_labels, 1)
         correct = (predq == gtq).sum()
         total = num_queries * num_classes
