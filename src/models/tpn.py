@@ -177,7 +177,7 @@ class LabelPropagation(nn.Module):
         logger.info('D2: {}'.format(D2))
 
         S = D1 * W * D2
-        logger.info('S: {}'.format(S))
+        # logger.info('S: {}'.format(S))
 
         # Step3: Label Propagation, F = (I-\alpha S)^{-1}Y
         ys = s_labels  # (25, 5)
