@@ -279,12 +279,12 @@ class RelationNetwork(nn.Module):
             nn.Conv2d(145, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, padding=1))
+            nn.MaxPool2d(kernel_size=2, padding=0))
         self.layer2 = nn.Sequential(
             nn.Conv2d(64,1,kernel_size=3,padding=1),
             nn.BatchNorm2d(1),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, padding=1))
+            nn.MaxPool2d(kernel_size=2, padding=0))
 
         self.fc3 = nn.Linear(4, 8)
         self.fc4 = nn.Linear(8, 1)
