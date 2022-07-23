@@ -15,7 +15,7 @@ python ../train.py \
 --learning_rate 0.001 \
 --balance_scale 1 \
 --use_join_loss true \
---cuda 2 \
+--cuda 1 \
 --use_aux_loss true \
 --use_linear_v false \
 --comment "纯tpn，vit backbone"
