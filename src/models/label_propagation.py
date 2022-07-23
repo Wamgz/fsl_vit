@@ -355,7 +355,7 @@ class LabelPropagationVit(nn.Module):
         inp = torch.cat((support, query), 0)  # (100, 3, 84, 84) 将suport和query set concat在一块
         # logger.info('inp: {}'.format(inp))
 
-        emb_all = self.encoder(inp).view(-1, 64)  # (100, 1600) 合并在一起提取特征
+        emb_all = torch.mean(self.encoder(inp), dim=1).view(-1, 64)  # (100, 1600) 合并在一起提取特征
         N, d = emb_all.shape[0], emb_all.shape[1]
 
         # Step2: Graph Construction
