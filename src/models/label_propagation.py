@@ -276,20 +276,21 @@ class RelationNetwork(nn.Module):
         super(RelationNetwork, self).__init__()
 
         self.layer1 = nn.Sequential(
-            nn.Conv1d(145, 64, kernel_size=3, padding=1),
-            nn.BatchNorm1d(64),
+            nn.Conv2d(145, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2, padding=0))
+            nn.MaxPool2d(kernel_size=2, padding=1))
         self.layer2 = nn.Sequential(
-            nn.Conv1d(64, 1, kernel_size=3, padding=1),
-            nn.BatchNorm1d(32),
+            nn.Conv2d(64,1,kernel_size=3,padding=1),
+            nn.BatchNorm2d(1),
             nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2, padding=0))
+            nn.MaxPool2d(kernel_size=2, padding=1))
 
-        self.fc3 = nn.Linear(16, 8)
+        self.fc3 = nn.Linear(4, 8)
         self.fc4 = nn.Linear(8, 1)
 
     def forward(self, x, rn):
+        x = x.view(-1, 145, 8, 8)
         out = self.layer1(x)
         out = self.layer2(out)
         # flatten
