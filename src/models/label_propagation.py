@@ -246,8 +246,8 @@ class ViT(nn.Module):
         x = self.transformer(x) # (batch, num_patch + 1, embedding_dim) -> (600, 65, 1024)
         if self.use_avg_pool_out:
             # x = self.norm(x) # (batch, num_patch + 1, embedding_dim)
-            x = self.avg_pool(x.transpose(1, 2))  # B C 1
-            x = torch.flatten(x, 1)
+            # x = self.avg_pool(x.transpose(1, 2))  # B C 1
+            # x = torch.flatten(x, 1)
             return x
         else:
             x = x.view(b, -1)
@@ -276,17 +276,17 @@ class RelationNetwork(nn.Module):
         super(RelationNetwork, self).__init__()
 
         self.layer1 = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=3, padding=1),
-            nn.BatchNorm2d(8),
+            nn.Conv1d(145, 64, kernel_size=3, padding=1),
+            nn.BatchNorm1d(64),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, padding=0))
+            nn.MaxPool1d(kernel_size=2, padding=0))
         self.layer2 = nn.Sequential(
-            nn.Conv2d(8, 1, kernel_size=3, padding=1),
-            nn.BatchNorm2d(1),
+            nn.Conv1d(64, 1, kernel_size=3, padding=1),
+            nn.BatchNorm1d(32),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, padding=0))
+            nn.MaxPool1d(kernel_size=2, padding=0))
 
-        self.fc3 = nn.Linear(64, 8)
+        self.fc3 = nn.Linear(16, 8)
         self.fc4 = nn.Linear(8, 1)
 
     def forward(self, x, rn):
@@ -360,11 +360,8 @@ class LabelPropagationVit(nn.Module):
         # Step2: Graph Construction
         ## sigmma
 
-        # self.sigma = self.relation(emb_all, 30)
-        # logger.info('sigma: {}'.format(self.sigma))
-        # W
-        # emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
-        # logger.info('emb_all: {}'.format(emb_all))
+        self.sigma = self.relation(emb_all, 30)
+        emb_all = emb_all / (self.sigma + eps)  # N*d -> (100, 1600)
 
         emb1 = torch.unsqueeze(emb_all, 1)  # N*1*d
         emb2 = torch.unsqueeze(emb_all, 0)  # 1*N*d

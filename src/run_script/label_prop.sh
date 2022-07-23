@@ -1,6 +1,6 @@
 # coding=UTF-8
 python ../train.py \
---dataset_root ~/WZ/data \
+--dataset_root /mnt21t/home/wyh/WZ/data \
 --epochs 1000 \
 --dataset_name miniImagenet \
 --classes_per_it_tr 5 \
